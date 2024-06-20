@@ -25,7 +25,8 @@ options:
   --threshold THRESHOLD
                         Threshold of score before adding to data
   --sourcename SOURCENAME
-                        The name to give this source of labels (default:retrodetect)```
+                        The name to give this source of labels (default:retrodetect)
+```
 
 
 # Output
