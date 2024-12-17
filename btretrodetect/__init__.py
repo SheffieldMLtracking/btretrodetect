@@ -7,7 +7,7 @@ import pickle
 from sklearn.neural_network import MLPClassifier
 #from sklearn.svm import LinearSVC
 import simplejpeg
-    
+import datetime    
     
 kernelstore = {}
 
@@ -439,12 +439,17 @@ class Retrodetect:
             
         if self.associated_colour_retrodetect is not None:
             self.associated_colour_retrodetect.newgreyscaleimage(photoitem)
+        self.save_image(photoitem)
 
-    def save_image(self,photoitem,fn,keepimg=False):    
-        compact_photoitem = photoitem.copy()
+    def save_image(self,photoitem,fn=None,keepimg=False):    
+        if fn is None:
+            parents = "/home/pi/beephotos/%s/%s/%s/%s/%s/" % (datetime.date.today(),photoitem['session_name'],photoitem['set_name'],photoitem['dev_id'],photoitem['camid'])
+            fn = parents + 'compact_' + photoitem['filename']
+        print("===================")
+        print(fn)
+        print("===================")        
+        compact_photoitem = photoitem #.copy() #saves time and memory if we actually keep [and trash] the photoitem!
         if photoitem['index']%100==0: keepimg = True #every 100 we keep the image
-        
-        
         scaledimg = photoitem['img'].astype(float)*10
         scaledimg[scaledimg>255]=255
         compact_photoitem['jpgimg'] = simplejpeg.encode_jpeg(scaledimg[:,:,None].astype(np.uint8),colorspace='GRAY',quality=8)
@@ -452,10 +457,17 @@ class Retrodetect:
         
         pickle.dump(compact_photoitem, open(fn,'wb'))
         
+        try:
+            pickle.dump(compact_photoitem, open(fn,'wb'))
+        except FileNotFoundError:
+            print("Parent Directory not found")
+            os.makedirs(os.path.split(fn)[0])
+            pickle.dump(compact_photoitem, open(fn,'wb'))
+        
         
             
 class ColourRetrodetect(Retrodetect):
-    def __init__(self,Nbg_keep = 20,Nbg_skip = 5,normalisation_blur=50,patchSize=16):
+    def __init__(self,Nbg_keep = 20,Nbg_skip = 5,normalisation_blur=50,patchSize=16,filenamegenerator=None):
         offset_configfile = configpath+'offset.csv'
         try:
             with open(offset_configfile,'r') as f:
@@ -471,7 +483,7 @@ class ColourRetrodetect(Retrodetect):
         self.Nbg_use = Nbg_keep - Nbg_skip
         self.previous_bg_imgs = None #keep track of previous imgs...
         self.idx = 0
-        self.imgcount = 0
+        self.imgcount = 0        
 
         
         self.unassociated_photoitems = []
@@ -549,6 +561,7 @@ class ColourRetrodetect(Retrodetect):
             raw_patch = raw_img[y-self.patchSize:y+self.patchSize,x-self.patchSize:x+self.patchSize].copy().astype(np.float32)
             
             photoitem['imgpatches'].append({'raw_patch':raw_patch, 'img_patch':img_patch, 'diff_patch':diff_patch, 'x':x, 'y':y})
+        self.save_image(photoitem)
 
     def match_images(self):
         """
@@ -582,3 +595,4 @@ class ColourRetrodetect(Retrodetect):
 
         if len(self.unassociated_photoitems)>10:
             del self.unassociated_photoitems[0]
+            
