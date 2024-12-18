@@ -8,6 +8,7 @@ from sklearn.neural_network import MLPClassifier
 #from sklearn.svm import LinearSVC
 import simplejpeg
 import datetime    
+import json
     
 kernelstore = {}
 
@@ -334,7 +335,8 @@ class TrainRetrodetectModel():
         
 
 class Retrodetect:
-    def __init__(self,Ndilated_keep = 20,Ndilated_skip = 5,Npatches = 20,patchSize = 16,patchThreshold=2,normalisation_blur=50):
+    def __init__(self,Ndilated_keep = 20,Ndilated_skip = 5,Npatches = 20,patchSize = 16,patchThreshold=2,normalisation_blur=50,base_path='/home/pi/beephotos'):
+        self.base_path = base_path
         self.Ndilated_keep = Ndilated_keep
         self.Ndilated_skip = Ndilated_skip
         self.Npatches = Npatches
@@ -385,7 +387,12 @@ class Retrodetect:
             patch['retrodetect_predictions'] = res
     
     def process_image(self,photoitem,groupby='camera'): ##TODO: PASS THIS METHOD THE CLASSIFIER WE WANT TO USE... AS IT WON'T HAVE ACCESS TO A FILENAME/PATH NECESSARILY
-
+        if 'imgpatches' in photoitem:
+            print('[already processed]')
+            return
+        if photoitem['img'] is None:
+            print("no 'img' image object. can't process.")
+            return
         raw_img = photoitem['img'].astype(float)
         blurred = fast_gaussian_filter(raw_img,self.normalisation_blur)    
         img = raw_img/(1+blurred)   
@@ -436,14 +443,14 @@ class Retrodetect:
                 diff[max(0,y-self.delSize):min(diff.shape[0],y+self.delSize),max(0,x-self.delSize):min(diff.shape[1],x+self.delSize)]=-5000
                 photoitem['imgpatches'].append({'raw_patch':raw_patch, 'img_patch':img_patch, 'diff_patch':diff_patch, 'x':x, 'y':y, 'diff_max':diff_max, 'img_max':img_max, 'raw_max':raw_max})
             self.classify_patches(photoitem,groupby)
-            
+        photoitem['greyscale'] = True            
         if self.associated_colour_retrodetect is not None:
             self.associated_colour_retrodetect.newgreyscaleimage(photoitem)
         self.save_image(photoitem)
 
     def save_image(self,photoitem,fn=None,keepimg=False):    
         if fn is None:
-            parents = "/home/pi/beephotos/%s/%s/%s/%s/%s/" % (datetime.date.today(),photoitem['session_name'],photoitem['set_name'],photoitem['dev_id'],photoitem['camid'])
+            parents = "%s/%s/%s/%s/%s/%s/" % (self.base_path,datetime.date.today(),photoitem['session_name'],photoitem['set_name']+'_compact',photoitem['dev_id'],photoitem['camid'])
             fn = parents + 'compact_' + photoitem['filename']
         print("===================")
         print(fn)
@@ -455,7 +462,7 @@ class Retrodetect:
         compact_photoitem['jpgimg'] = simplejpeg.encode_jpeg(scaledimg[:,:,None].astype(np.uint8),colorspace='GRAY',quality=8)
         if not keepimg: compact_photoitem['img'] = None
         
-        pickle.dump(compact_photoitem, open(fn,'wb'))
+        #pickle.dump(compact_photoitem, open(fn,'wb'))
         
         try:
             pickle.dump(compact_photoitem, open(fn,'wb'))
@@ -467,14 +474,23 @@ class Retrodetect:
         
             
 class ColourRetrodetect(Retrodetect):
-    def __init__(self,Nbg_keep = 20,Nbg_skip = 5,normalisation_blur=50,patchSize=16,filenamegenerator=None):
-        offset_configfile = configpath+'offset.csv'
+    def __init__(self,Nbg_keep = 20,Nbg_skip = 5,normalisation_blur=50,patchSize=16,camid='all',base_path='/home/pi/beephotos'):
+        self.base_path = base_path
+        offset_configfile = configpath+'offset.json'
         try:
             with open(offset_configfile,'r') as f:
-                self.offset = [int(st) for st in f.read().split(',')]
-        except:
-            print("No offset data found. Using [0,0]!!! To set correctly, create a file %s containing (x-offset, y-offset)" % offset_configfile)
-            self.offset = [0,0]
+                offsetdata = json.load(f)
+                try:
+                    self.offset = offsetdata[camid]
+                except KeyError:
+                    print('Offset config file does not include the specific camera key (%s). To set correctly, create a file %s containing a dictionary, e.g. {"C-DA3075143": [20, 10]}. The dictionary key can either be the colour camera id, or it can be "all" to just be used by all cameras (if the unique camera key can not be found.' % (camid,offset_configfile))
+                    raise Exception("No offset data available: Can't generate colour tag file!!!")                    
+            print("Using %s offset file (%d, %d)" % (offset_configfile, self.offset[0], self.offset[1]))
+        except FileNotFoundError:
+            print('No offset file found!!! To set correctly, create a file %s containing a dictionary, e.g. {"C-DA3075143": [20, 10]}. The dictionary key can either be the colour camera id, or it can be "all" to just be used by all cameras (if the unique camera key can not be found.' % offset_configfile)
+            raise Exception("No offset data available: Can't generate colour tag file!!!") 
+        
+            #self.offset = [0,0]
         assert len(self.offset)==2
         self.Nbg_keep = Nbg_keep
         self.Nbg_skip = Nbg_skip
@@ -483,7 +499,8 @@ class ColourRetrodetect(Retrodetect):
         self.Nbg_use = Nbg_keep - Nbg_skip
         self.previous_bg_imgs = None #keep track of previous imgs...
         self.idx = 0
-        self.imgcount = 0        
+        self.imgcount = 0
+        self.processed_photoitems = []
 
         
         self.unassociated_photoitems = []
@@ -505,7 +522,7 @@ class ColourRetrodetect(Retrodetect):
     #        
     #        photoitem['imgpatches'].append({'img_patch':patch, 'diff_patch':diff_patch, 'x':x, 'y':y, 'diff_max':diff_max, 'img_max':img_max, 'raw_max':raw_max})
 
-    def process_colour_image(self,photoitem,patchcoords):
+    def process_colour_image(self,photoitem,imgpatches):
         raw_img = photoitem['img'].astype(float)
         blurred = fast_gaussian_filter(raw_img,self.normalisation_blur)    
         img = raw_img/(1+blurred)   
@@ -550,7 +567,8 @@ class ColourRetrodetect(Retrodetect):
         #photoitem['diff'] = diff.copy()
 
         photoitem['imgpatches'] = []
-        for y,x in patchcoords:
+        for patch in imgpatches:
+            y,x = patch['y'],patch['x']
             x = x + self.offset[0]
             y = y + self.offset[1]
             x = 2*(x//2)
@@ -559,9 +577,10 @@ class ColourRetrodetect(Retrodetect):
             img_patch = img[y-self.patchSize:y+self.patchSize,x-self.patchSize:x+self.patchSize].astype(np.float32).copy()
             diff_patch = diff[y-self.patchSize:y+self.patchSize,x-self.patchSize:x+self.patchSize].copy().astype(np.float32)        
             raw_patch = raw_img[y-self.patchSize:y+self.patchSize,x-self.patchSize:x+self.patchSize].copy().astype(np.float32)
-            
-            photoitem['imgpatches'].append({'raw_patch':raw_patch, 'img_patch':img_patch, 'diff_patch':diff_patch, 'x':x, 'y':y})
+            pred = patch['retrodetect_predictions']
+            photoitem['imgpatches'].append({'raw_patch':raw_patch, 'img_patch':img_patch, 'diff_patch':diff_patch, 'x':x, 'y':y, 'retrodetect_predictions':pred})
         self.save_image(photoitem)
+
 
     def match_images(self):
         """
@@ -572,22 +591,31 @@ class ColourRetrodetect(Retrodetect):
         for photo in self.unassociated_photoitems:
             match = [gs_photo for gs_photo in self.greyscale_photoitems if photo['record']['triggertime']==gs_photo['record']['triggertime']]
             if len(match)>0:
+                print("MATCH: %s=%s" % (photo['filename'], match[0]['filename']))
                 self.greyscale_photoitems.remove(match[0])
+                photo['greyscale'] = False
                 if ('imgpatches' not in match[0]): #this greyscale image doesn't have any patches
+                    print("No patches")
                     self.unassociated_photoitems.remove(photo)
-                    
                     continue
                 photo['imgpatches'] = []
-                patch_coordinates = [(patch['y'],patch['x']) for patch in match[0]['imgpatches']]
+                
                     
-                self.process_colour_image(photo,patch_coordinates)
+                self.process_colour_image(photo,match[0]['imgpatches'])
+                self.processed_photoitems.append(photo)
+                if len(self.processed_photoitems)>10:
+                    del self.processed_photoitems[0]
                 #SAVE PHOTO!
                 #super().save_image(photo)
                 #photo['asssociated_gs_photoitem'] = match[0]
                 #self.process_colour_image(photo,match[0])
                 self.unassociated_photoitems.remove(photo)
+                
         
     def process_image(self,photoitem):
+        if 'imgpatches' in photoitem:
+            print('[already processed]')
+            #return 
         #look for any matching photos...
         self.unassociated_photoitems.append(photoitem)
         self.match_images()
@@ -595,4 +623,3 @@ class ColourRetrodetect(Retrodetect):
 
         if len(self.unassociated_photoitems)>10:
             del self.unassociated_photoitems[0]
-            

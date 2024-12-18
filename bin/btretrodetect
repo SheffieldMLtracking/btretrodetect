@@ -6,7 +6,7 @@ import argparse
 import os
 import json
 import pickle
-from btretrodetect import Retrodetect
+from btretrodetect import Retrodetect, ColourRetrodetect
 import json
 import re
 
@@ -14,15 +14,26 @@ parser = argparse.ArgumentParser(description='Runs the retoreflector detection a
 parser.add_argument('imgpath',type=str,help='Path to images (it will recursively search for images in these paths)')
 parser.add_argument('--after',required=False,type=str,help='Only process images that were created after this time HH:MM:SS')
 parser.add_argument('--before',required=False,type=str,help='Only process images that were created before this time HH:MM:SS')
-parser.add_argument('--refreshcache',help='Whether to refresh the cache',action="store_true")
-parser.add_argument('--threshold',help='Threshold of score before adding to data (default=0)',type=str,default=0)
+#parser.add_argument('--refreshcache',help='Whether to refresh the cache',action="store_true")
+parser.add_argument('--threshold',help='Threshold of score before adding to data (default=0.5)',type=str,default=0.5)
 parser.add_argument('--sourcename',help='The name to give this source of labels (default:btretrodetect)',type=str,default='btretrodetect')
-parser.add_argument('--groupby',help='Which classifier to use (either one specific to this camera, set or all data). (default: camera; choices: camera, set, all)',type=str,default='camera')
+parser.add_argument('--groupby',help='Which classifier to use (either one specific to this camera, set or all data). (default: all; choices: camera, set, all)',type=str,default='all')
 
 #TODO: Might want to either; (a) overwrite, (b) skip, (c) append...
 #parser.add_argument('--',help='Stops it overwriting previous labels from this source (default behaviour is to do overwrite)',action="store_true") 
 args = parser.parse_args()
 
+def isgreyscale(photoitem):
+    """
+    Returns true if the photo item is from a greyscale camera
+    TODO Need to add code to bee_track to record in the photoitem if it's greyscale. Currently a hack to try to guess from the image itself.   
+    
+    """
+    print("Trying to determine if %s is greyscale..." % photoitem['filename'])
+#    print(photoitem)
+    if 'greyscale' in photoitem: return photoitem['greyscale']    
+    return np.mean(np.abs(photoitem['img'][::2,::2].astype(float)-photoitem['img'][1::2,1::2].astype(float)))/np.mean(photoitem['img'][::2,::2].astype(float))<1
+    
 
 def totalsecs(st):
     try:
@@ -40,36 +51,121 @@ if args.after is not None:
 if args.before is not None:
     before = totalsecs(args.before)
 
+def get_cam_paths(pathtocameras):
+    """
+    Returns a path to each of the cameras on this box, in a dictionary,
+    with a key of 0 --> not greyscale, 1 --> greyscale.
+    
+    Pass it the path to one of the cameras.
+    """
+    #splitpath = os.path.normpath(pathtoimages).split(os.sep)
+    camerapaths = {}
+    for possiblepath in glob(pathtocameras+'/*'):
+        fns = sorted(glob(possiblepath+'/*.np'))
+        if len(fns)==0: continue
+        print("OPENING %s..." % fns[0])
+        photoitem = pickle.load(open(fns[0],'rb'))
+        camerapaths[isgreyscale(photoitem)] = possiblepath
+    return camerapaths
+    
 imgpath = args.imgpath #'/home/mike/Documents/Research/rsync_bee/test/beephotos/2023-06-29'
 for possiblepath in [x[0] for x in os.walk(imgpath) if '/.' not in x[0]]:
-    fns = sorted(glob(possiblepath+'/*.np'))
-    rd = Retrodetect()
-    for i,fn in enumerate(fns):
+    print(">>>>>>>>>>>>",possiblepath)
+    #
+    
+    if len(glob(possiblepath+'/*/*.np'))==0: continue #not a folder full of np files, keep looking...
+    campaths = get_cam_paths(possiblepath)
+    base_path = os.sep.join(os.path.abspath(possiblepath).split(os.sep)[:-4])
+    print("Using as base path to save compacted images %s" % base_path)
+    
+    
+
+    grd = Retrodetect(base_path=base_path)
+    if False in campaths:
+        camid = os.path.normpath(campaths[False]).split(os.path.sep)[-1] #get the camera id from the path, this will be the rightmost folder in the tree
+        print("Colour camera id: %s" % camid)
+        crd = ColourRetrodetect(patchSize=24,camid=camid,base_path=base_path)
+    grd.associated_colour_retrodetect = crd
+    
+    g_fns = sorted(glob(campaths[True]+'/*.np'))
+    c_fns = None
+    if False in campaths:
+        c_fns = sorted(glob(campaths[False]+'/*.np'))
+    for i,fn in enumerate(g_fns):
         imgfilename = fn.split('/')[-1] #remove the path
-        #print(before,totalsecs(imgfilename),after)
         if not before>totalsecs(imgfilename)>after:
             continue
-        print(fn+" ",end="")
+        
         photoitem = pickle.load(open(fn,'rb'))
-        rd.process_image(photoitem,args.groupby)        
-        json_list = []
+        
+        #we previously didn't save this info into the photoitem, but it's used later for saving the low-res file.
+        fnpathsplit = os.path.abspath(fn).split(os.sep)
+        if 'camid' not in photoitem: photoitem['camid'] = fnpathsplit[-2]
+        if 'dev_id' not in photoitem: photoitem['dev_id'] = fnpathsplit[-3]
+        if 'set_name' not in photoitem: photoitem['set_name'] = fnpathsplit[-4]
+        if 'session_name' not in photoitem: photoitem['session_name'] = fnpathsplit[-5]
+
+
+        
+        if c_fns is not None:
+            c_fn = [fn for fn in c_fns if imgfilename in fn]
+            if len(c_fn)>0: 
+                c_fn = c_fn[0]
+            else:
+                c_fn = None
+        else:
+            c_fn = None    
+        
+        if c_fn is None:
+            print("Colour camera filename not found, have a look at campaths:",campaths)
+        
+        #if not isgreyscale(photoitem): #this shouldn't happen any more
+        #    print("-")
+        #    continue
+        
+        grd.process_image(photoitem,args.groupby)
+        if c_fn is not None:
+            colourphotoitem = pickle.load(open(c_fn,'rb'))
+            fnpathsplit = os.path.abspath(c_fn).split(os.sep)
+            if 'camid' not in colourphotoitem: colourphotoitem['camid'] = fnpathsplit[-2]
+            if 'dev_id' not in colourphotoitem: colourphotoitem['dev_id'] = fnpathsplit[-3]
+            if 'set_name' not in colourphotoitem: colourphotoitem['set_name'] = fnpathsplit[-4]
+            if 'session_name' not in colourphotoitem: colourphotoitem['session_name'] = fnpathsplit[-5]
+            
+            crd.process_image(colourphotoitem)
+            
+        grey_json_list = []
+        colour_json_list = []
+        
         if 'imgpatches' not in photoitem:
             #print("No plausible patches in image %s." % fn)
             continue
-        
         for patch in photoitem['imgpatches']:
             if patch['retrodetect_predictions']<float(args.threshold):
                 print(".",end="") 
                 continue #not a tag
             print("x",end="")
-            json_item = {"x":int(r[1]),"y":int(r[2]), "source": args.sourcename, "version": "btretrodetect, v2.0", "label":"", "confidence": patch['retrodetect_predictions']}
-            json_list.append(json_item)
+            json_item = {"x":int(patch['x']),"y":int(patch['y']), "source": args.sourcename, "version": "btretrodetect, v2.0", "meta":"", "label":"rd", "confidence": patch['retrodetect_predictions']}
+            grey_json_list.append(json_item)
 
-        datapath = possiblepath+'/'+args.sourcename
-        try:
-            os.mkdir(datapath)
-        except FileExistsError:
-            pass
+        if c_fn is not None:
+            if 'imgpatches' not in colourphotoitem:
+                #print("No plausible patches in image %s." % fn)
+                continue
+            for patch in colourphotoitem['imgpatches']:
+                if patch['retrodetect_predictions']<float(args.threshold):
+                    print(".",end="") 
+                    continue #not a tag
+                print("x",end="")
+                json_item = {"x":int(patch['x']),"y":int(patch['y']), "source": args.sourcename, "version": "btretrodetect, v2.0", "meta":"", "label":"rd", "confidence": patch['retrodetect_predictions']}
+                colour_json_list.append(json_item)
+            colour_datapath = campaths[False]+'/'+args.sourcename
+
+        grey_datapath = campaths[True]+'/'+args.sourcename
+
+        os.makedirs(grey_datapath,exist_ok=True)
+        if c_fn is not None: os.makedirs(colour_datapath,exist_ok=True)
         datafilename = imgfilename[:-2]+'json'
-        json.dump(json_list,open(datapath+'/'+datafilename,'w'))
+        if c_fn is not None: json.dump(colour_json_list,open(colour_datapath+'/'+datafilename,'w'))
+        json.dump(grey_json_list,open(grey_datapath+'/'+datafilename,'w'))        
         print("")
