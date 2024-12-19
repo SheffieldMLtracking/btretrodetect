@@ -577,7 +577,10 @@ class ColourRetrodetect(Retrodetect):
             img_patch = img[y-self.patchSize:y+self.patchSize,x-self.patchSize:x+self.patchSize].astype(np.float32).copy()
             diff_patch = diff[y-self.patchSize:y+self.patchSize,x-self.patchSize:x+self.patchSize].copy().astype(np.float32)        
             raw_patch = raw_img[y-self.patchSize:y+self.patchSize,x-self.patchSize:x+self.patchSize].copy().astype(np.float32)
-            pred = patch['retrodetect_predictions']
+            if 'retrodetect_predictions' in patch:
+                pred = patch['retrodetect_predictions']
+            else:
+                pred = None
             photoitem['imgpatches'].append({'raw_patch':raw_patch, 'img_patch':img_patch, 'diff_patch':diff_patch, 'x':x, 'y':y, 'retrodetect_predictions':pred})
         self.save_image(photoitem)
 
