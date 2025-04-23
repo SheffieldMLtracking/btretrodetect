@@ -11,7 +11,7 @@ import json
 import re
 
 parser = argparse.ArgumentParser(description='Runs the retoreflector detection algorithm')
-parser.add_argument('imgpath',type=str,help='Path to images (it will recursively search for images in these paths)')
+parser.add_argument('imgpath',type=str,help='Path to images (it will recursively search for images in these paths).')
 parser.add_argument('--after',required=False,type=str,help='Only process images that were created after this time HH:MM:SS')
 parser.add_argument('--before',required=False,type=str,help='Only process images that were created before this time HH:MM:SS')
 #parser.add_argument('--refreshcache',help='Whether to refresh the cache',action="store_true")
@@ -31,8 +31,17 @@ def isgreyscale(photoitem):
     """
     print("Trying to determine if %s is greyscale..." % photoitem['filename'])
 #    print(photoitem)
-    if 'greyscale' in photoitem: return photoitem['greyscale']    
-    return np.mean(np.abs(photoitem['img'][::2,::2].astype(float)-photoitem['img'][1::2,1::2].astype(float)))/np.mean(photoitem['img'][::2,::2].astype(float))<1
+    if 'greyscale' in photoitem: 
+        gs = photoitem['greyscale']
+        print("Determined to be greyscale=%s from 'greyscale' photoitem feature" % ("True" if gs else "False"))
+        return gs   
+    gs = np.mean(np.abs(photoitem['img'][::2,::2].astype(float)-photoitem['img'][1::2,1::2].astype(float)))/np.mean(photoitem['img'][::2,::2].astype(float))<1
+    
+#    print(np.mean(np.abs(photoitem['img'][1:-1:2,:].astype(float)-photoitem['img'][0:-2:2,:]/2-photoitem['img'][2::2,:]/2))/np.mean(photoitem['img']))
+#    print(np.mean(np.abs(photoitem['img'][1::2,1::2].astype(float)-photoitem['img'][1::2,::2])))
+#    print(np.mean(np.abs(photoitem['img'][::2,1::2].astype(float)-photoitem['img'][1::2,::2])))    
+    print("Determined to be greyscale=%s from photoitem img" % ("True" if gs else "False"))
+    return gs   
     
 
 def totalsecs(st):
@@ -65,37 +74,41 @@ def get_cam_paths(pathtocameras):
         if len(fns)==0: continue
         print("OPENING %s..." % fns[0])
         photoitem = pickle.load(open(fns[0],'rb'))
-        camerapaths[isgreyscale(photoitem)] = possiblepath
+        greyscale = None
+        if possiblepath.split('/')[-1][:2]=='M-':
+            print("Determined to be greyscale from path (%s)" % possiblepath)
+            greyscale = True
+        if possiblepath.split('/')[-1][:2]=='C-':
+            print("Determined to be colour from path (%s)" % possiblepath)
+            greyscale = False
+        if greyscale is None: greyscale = isgreyscale(photoitem)
+        camerapaths[greyscale] = possiblepath
     return camerapaths
     
 imgpath = args.imgpath #'/home/mike/Documents/Research/rsync_bee/test/beephotos/2023-06-29'
 for possiblepath in [x[0] for x in os.walk(imgpath) if '/.' not in x[0]]:
-    print(">>>>>>>>>>>>",possiblepath)
-    #
-    
-    if len(glob(possiblepath+'/*/*.np'))==0: continue #not a folder full of np files, keep looking...
+    print("Considering possible path: %s" % possiblepath)
+    if len(glob(possiblepath+'/*/*.np'))==0: 
+        print("[No .np files]")
+        continue #not a folder full of np files, keep looking...
     campaths = get_cam_paths(possiblepath)
     base_path = os.sep.join(os.path.abspath(possiblepath).split(os.sep)[:-4])
     print("Using as base path to save compacted images %s" % base_path)
-    
-    
-
     grd = Retrodetect(base_path=base_path)
     if False in campaths:
         camid = os.path.normpath(campaths[False]).split(os.path.sep)[-1] #get the camera id from the path, this will be the rightmost folder in the tree
         print("Colour camera id: %s" % camid)
         crd = ColourRetrodetect(patchSize=24,camid=camid,base_path=base_path)
     grd.associated_colour_retrodetect = crd
-    
     g_fns = sorted(glob(campaths[True]+'/*.np'))
     c_fns = None
     if False in campaths:
         c_fns = sorted(glob(campaths[False]+'/*.np'))
     for i,fn in enumerate(g_fns):
         imgfilename = fn.split('/')[-1] #remove the path
+        print(imgfilename,end=": ")
         if not before>totalsecs(imgfilename)>after:
             continue
-        
         photoitem = pickle.load(open(fn,'rb'))
         
         #we previously didn't save this info into the photoitem, but it's used later for saving the low-res file.
