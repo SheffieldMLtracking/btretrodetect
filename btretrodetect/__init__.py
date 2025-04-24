@@ -599,8 +599,9 @@ class ColourRetrodetect(Retrodetect):
                 photo['greyscale'] = False
                 if ('imgpatches' not in match[0]): #this greyscale image doesn't have any patches
                     print("No patches")
-                    self.unassociated_photoitems.remove(photo)
-                    continue
+                    match[0]['imgpatches'] = []
+                    #self.unassociated_photoitems.remove(photo)
+                    #continue
                 photo['imgpatches'] = []
                 
                     
