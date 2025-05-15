@@ -87,9 +87,9 @@ def get_cam_paths(pathtocameras):
     
 imgpath = args.imgpath #'/home/mike/Documents/Research/rsync_bee/test/beephotos/2023-06-29'
 for possiblepath in [x[0] for x in os.walk(imgpath) if '/.' not in x[0]]:
-    print("Considering possible path: %s" % possiblepath)
+    print("Considering possible path: (searching %s/*/*.np)" % possiblepath)
     if len(glob(possiblepath+'/*/*.np'))==0: 
-        print("[No .np files]")
+        print("[No .np files, you might need to go up a level?]")
         continue #not a folder full of np files, keep looking...
     campaths = get_cam_paths(possiblepath)
     base_path = os.sep.join(os.path.abspath(possiblepath).split(os.sep)[:-4])
