@@ -10,6 +10,22 @@ import simplejpeg
 import datetime    
 import json
     
+debugtimesum = 0
+debugtime = datetime.datetime.now()
+def debug_time_record(msg=None):
+    global debugtime
+    global debugtimesum    
+    if msg is not None:
+        elapsed = (datetime.datetime.now() - debugtime).total_seconds()
+        debugtimesum+=elapsed
+        #print("%9.2f ms, %s" % (1000*elapsed,msg))
+    else:
+        if debugtimesum>0: print("%9.2f ms, TOTAL" % (1000*debugtimesum))
+        debugtimesum=0
+        
+    debugtime = datetime.datetime.now()
+    
+    
 kernelstore = {}
 
 configpath = os.path.expanduser('~')+'/.btretrodetect/'
@@ -61,7 +77,7 @@ def gaussian_filter(img, sigma,croptosize=True):
     if croptosize: blurredimg = blurredimg[L*2:-L*2,L*2:-L*2]
     return blurredimg
 
-def fast_gaussian_filter(img, sigma, blocksize = 4):
+def fast_gaussian_filter(img, sigma, blocksize = 12):
     """
     Applies a gaussian smoothing kernel on a 2d img
     using numpy's 1d convolve function.
@@ -112,15 +128,19 @@ def getblockmaxedimage(img,blocksize, offset,resize=True):
     else:
         maxes = img[:k*blocksize,:l*blocksize].reshape(k,blocksize,l,blocksize).max(axis=(-1,-3)) #from https://stackoverflow.com/questions/18645013/windowed-maximum-in-numpy
     templist = []
-    xm,ym = maxes.shape
-    i = 0
-    for xoff in range(-offset+1,offset,1): #(if offset=1, for xoff in [0]) (if offset=2, for xoff in [-1,0,1])...
-      for yoff in range(-offset+1,offset,1):
-        if i==0:
-          max_img = maxes[xoff+offset:xoff+xm-offset,yoff+offset:yoff+ym-offset]
-        else:
-          max_img = np.maximum(max_img,maxes[xoff+offset:xoff+xm-offset,yoff+offset:yoff+ym-offset])
-        i+=1
+    
+    if offset>1:
+        xm,ym = maxes.shape
+        i = 0
+        for xoff in range(-offset+1,offset,1): #(if offset=1, for xoff in [0]) (if offset=2, for xoff in [-1,0,1])...
+          for yoff in range(-offset+1,offset,1):
+            if i==0:
+              max_img = maxes[xoff+offset:xoff+xm-offset,yoff+offset:yoff+ym-offset]
+            else:
+              max_img = np.maximum(max_img,maxes[xoff+offset:xoff+xm-offset,yoff+offset:yoff+ym-offset])
+            i+=1
+    else:
+        max_img = maxes
 
     if resize:
         out_img = np.full_like(img,0)
@@ -387,39 +407,144 @@ class Retrodetect:
             patch['retrodetect_predictions'] = res
     
     def process_image(self,photoitem,groupby='camera'): ##TODO: PASS THIS METHOD THE CLASSIFIER WE WANT TO USE... AS IT WON'T HAVE ACCESS TO A FILENAME/PATH NECESSARILY
+        tempdebugtime = datetime.datetime.now()
         if 'imgpatches' in photoitem:
             print('[already processed]')
             return
         if photoitem['img'] is None:
             print("no 'img' image object. can't process.")
             return
-        raw_img = photoitem['img'].astype(float)
+        debug_time_record() 
+        print(photoitem['img'].dtype)
+        scalingfactor = 5
+        smallmaxedimage = getblockmaxedimage(photoitem['img'],scalingfactor,1,resize=False)
+        #smallmaxedimage = photoitem['img']
+        debug_time_record('reduce image size')            
+        raw_img = smallmaxedimage.astype(float)
+        debug_time_record('convert to float')
+        
+        
         blurred = fast_gaussian_filter(raw_img,self.normalisation_blur)    
-        img = raw_img/(1+blurred)   
+        debug_time_record('blur')
+        img = raw_img/(1+blurred)
+        debug_time_record('normalise with blurred image')  
         #photoitem['normalised_img'] = img.copy()
-        blocksize = 2
+        blocksize = 6
         offset = 2
-        dilated_img = getblockmaxedimage(img,blocksize,offset,resize=False)    
+        dilated_img = getblockmaxedimage(img,blocksize,offset,resize=False)
+        debug_time_record('dilate image computed')
         if self.previous_dilated_imgs is None:
             self.previous_dilated_imgs = np.zeros(list(dilated_img.shape)+[self.Ndilated_keep])
+            self.previous_imgs = np.zeros(list(photoitem['img'].shape)+[self.Ndilated_keep])
+            debug_time_record('creating previous dilated images array (one off)')
         self.previous_dilated_imgs[:,:,self.idx] = dilated_img
-    
-        self.idx = (self.idx + 1) % self.Ndilated_keep
+        self.previous_imgs[:,:,self.idx] = photoitem['img']
         
+        debug_time_record('placing dilated image in previous dilated imgs array')
+        self.idx = (self.idx + 1) % self.Ndilated_keep
+
         subtraction_img = np.max(self.previous_dilated_imgs[:,:,self.idx:(self.idx+self.Ndilated_use)],2)    
+        debug_time_record('compute subtraction image')
         if self.idx+self.Ndilated_use>self.Ndilated_keep:
             other_subtraction_img = np.max(self.previous_dilated_imgs[:,:,:(self.idx-self.Ndilated_skip)],2)
             subtraction_img = np.max(np.array([other_subtraction_img,subtraction_img]),0)
-
+            debug_time_record('alternative subtraction image calculation')
     
         self.imgcount+=1
 
-        
         resized_subtraction_img = np.empty_like(img)
+        debug_time_record('create empty array (size: '+str(resized_subtraction_img.shape)+')')
         insideimg = subtraction_img.repeat(blocksize,axis=0).repeat(blocksize,axis=1)
+        debug_time_record('repeat blocks to rebuild subtraction image at larger size (size: '+str(insideimg.shape)+')')
         #resized_subtraction_img[:insideimg.shape[0],:insideimg.shape[1]] = insideimg    
         resized_subtraction_img[blocksize*offset:(blocksize*offset+insideimg.shape[0]),blocksize*offset:(blocksize*offset+insideimg.shape[1])] = insideimg
+        debug_time_record('place insideimg inside the resized subtraction block')
         diff = img - resized_subtraction_img
+        debug_time_record('compute diff')
+        #photoitem['resized_subtraction_img'] = resized_subtraction_img.copy()
+        
+
+        #We need to temporarily keep this 'diff' image, as this is a handy way of finding the
+        #a tag in the colour image near the one found in the greyscale image, but it needs to
+        #be removed later.
+        #photoitem['diff'] = diff.copy()
+
+        
+        if self.imgcount>2: #self.Ndilated_keep: #we have collected enough to start tracking...
+            photoitem['imgpatches'] = []
+            for p in range(self.Npatches):
+                y,x = np.unravel_index(diff.argmax(), diff.shape)
+                #photoitem['img']
+                print(x,y)
+                
+                diff_max = diff[y,x]
+                if diff_max<self.patchThreshold: break #we don't need to save patches that are incredibly faint.
+                img_max = img[y,x]
+                raw_max = raw_img[y,x]
+                
+                img_patch = img[y-self.patchSize:y+self.patchSize,x-self.patchSize:x+self.patchSize].astype(np.float32).copy()
+                diff_patch = diff[y-self.patchSize:y+self.patchSize,x-self.patchSize:x+self.patchSize].copy().astype(np.float32)
+                raw_patch = raw_img[y-self.patchSize:y+self.patchSize,x-self.patchSize:x+self.patchSize].copy().astype(np.float32)     
+                diff[max(0,y-self.delSize):min(diff.shape[0],y+self.delSize),max(0,x-self.delSize):min(diff.shape[1],x+self.delSize)]=-5000
+                photoitem['imgpatches'].append({'raw_patch':raw_patch, 'img_patch':img_patch, 'diff_patch':diff_patch, 'x':x*scalingfactor, 'y':y*scalingfactor, 'diff_max':diff_max, 'img_max':img_max, 'raw_max':raw_max})
+            self.classify_patches(photoitem,groupby)
+            debug_time_record('looping over %d patches...' % self.Npatches)
+        photoitem['greyscale'] = True            
+        if self.associated_colour_retrodetect is not None:
+            self.associated_colour_retrodetect.newgreyscaleimage(photoitem)
+        debug_time_record('colour photo processing')
+        self.save_image(photoitem)
+        debug_time_record('saving image')
+        debug_time_record()
+        print('TOTAL TIME TAG FINDING [greyscale]: ',(datetime.datetime.now() - tempdebugtime).total_seconds())
+        
+    def original_process_image(self,photoitem,groupby='camera'): ##TODO: PASS THIS METHOD THE CLASSIFIER WE WANT TO USE... AS IT WON'T HAVE ACCESS TO A FILENAME/PATH NECESSARILY
+        tempdebugtime = datetime.datetime.now()
+        if 'imgpatches' in photoitem:
+            print('[already processed]')
+            return
+        if photoitem['img'] is None:
+            print("no 'img' image object. can't process.")
+            return
+        debug_time_record() 
+        raw_img = photoitem['img'].astype(float)
+        debug_time_record('convert to float')
+        
+        
+        blurred = fast_gaussian_filter(raw_img,self.normalisation_blur)    
+        debug_time_record('blur')
+        img = raw_img/(1+blurred)
+        debug_time_record('normalise with blurred image')  
+        #photoitem['normalised_img'] = img.copy()
+        blocksize = 6
+        offset = 2
+        dilated_img = getblockmaxedimage(img,blocksize,offset,resize=False)
+        debug_time_record('dilate image computed')
+        if self.previous_dilated_imgs is None:
+            self.previous_dilated_imgs = np.zeros(list(dilated_img.shape)+[self.Ndilated_keep])
+            debug_time_record('creating previous dilated images array (one off)')
+        self.previous_dilated_imgs[:,:,self.idx] = dilated_img
+        debug_time_record('placing dilated image in previous dilated imgs array')
+        self.idx = (self.idx + 1) % self.Ndilated_keep
+
+        subtraction_img = np.max(self.previous_dilated_imgs[:,:,self.idx:(self.idx+self.Ndilated_use)],2)    
+        debug_time_record('compute subtraction image')
+        if self.idx+self.Ndilated_use>self.Ndilated_keep:
+            other_subtraction_img = np.max(self.previous_dilated_imgs[:,:,:(self.idx-self.Ndilated_skip)],2)
+            subtraction_img = np.max(np.array([other_subtraction_img,subtraction_img]),0)
+            debug_time_record('alternative subtraction image calculation')
+    
+        self.imgcount+=1
+
+        resized_subtraction_img = np.empty_like(img)
+        debug_time_record('create empty array (size: '+str(resized_subtraction_img.shape)+')')
+        insideimg = subtraction_img.repeat(blocksize,axis=0).repeat(blocksize,axis=1)
+        debug_time_record('repeat blocks to rebuild subtraction image at larger size (size: '+str(insideimg.shape)+')')
+        #resized_subtraction_img[:insideimg.shape[0],:insideimg.shape[1]] = insideimg    
+        resized_subtraction_img[blocksize*offset:(blocksize*offset+insideimg.shape[0]),blocksize*offset:(blocksize*offset+insideimg.shape[1])] = insideimg
+        debug_time_record('place insideimg inside the resized subtraction block')
+        diff = img - resized_subtraction_img
+        debug_time_record('compute diff')
         #photoitem['resized_subtraction_img'] = resized_subtraction_img.copy()
         
 
@@ -443,10 +568,15 @@ class Retrodetect:
                 diff[max(0,y-self.delSize):min(diff.shape[0],y+self.delSize),max(0,x-self.delSize):min(diff.shape[1],x+self.delSize)]=-5000
                 photoitem['imgpatches'].append({'raw_patch':raw_patch, 'img_patch':img_patch, 'diff_patch':diff_patch, 'x':x, 'y':y, 'diff_max':diff_max, 'img_max':img_max, 'raw_max':raw_max})
             self.classify_patches(photoitem,groupby)
+            debug_time_record('looping over %d patches...' % self.Npatches)
         photoitem['greyscale'] = True            
         if self.associated_colour_retrodetect is not None:
             self.associated_colour_retrodetect.newgreyscaleimage(photoitem)
+        debug_time_record('colour photo processing')
         self.save_image(photoitem)
+        debug_time_record('saving image')
+        debug_time_record()
+        print('TOTAL TIME TAG FINDING [greyscale]: ',(datetime.datetime.now() - tempdebugtime).total_seconds())
 
     def save_image(self,photoitem,fn=None,keepimg=False):    
         if fn is None:
@@ -523,6 +653,7 @@ class ColourRetrodetect(Retrodetect):
     #        photoitem['imgpatches'].append({'img_patch':patch, 'diff_patch':diff_patch, 'x':x, 'y':y, 'diff_max':diff_max, 'img_max':img_max, 'raw_max':raw_max})
 
     def process_colour_image(self,photoitem,imgpatches):
+        tempdebugtime = datetime.datetime.now()
         raw_img = photoitem['img'].astype(float)
         blurred = fast_gaussian_filter(raw_img,self.normalisation_blur)    
         img = raw_img/(1+blurred)   
@@ -583,7 +714,7 @@ class ColourRetrodetect(Retrodetect):
                 pred = None
             photoitem['imgpatches'].append({'raw_patch':raw_patch, 'img_patch':img_patch, 'diff_patch':diff_patch, 'x':x, 'y':y, 'retrodetect_predictions':pred})
         self.save_image(photoitem)
-
+        print('TOTAL TIME [colour image]',(datetime.datetime.now() - tempdebugtime).total_seconds())
 
     def match_images(self):
         """
