@@ -617,6 +617,9 @@ class ColourRetrodetect(Retrodetect):
                 
         
     def process_image(self,photoitem):
+        if photoitem is None:
+            print("[photo none]")
+            return
         if 'imgpatches' in photoitem:
             print('[already processed]')
             #return 
