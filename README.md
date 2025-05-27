@@ -3,7 +3,7 @@
 - Also handles colour camera!
 
 # install
-```pip install git+https://github.com/lionfish0/btretrodetect.git```
+[to add]
 
 # usage
 One passes a path and the tool will recursively search through the subdirectories, finding all the images, sorting them (within that folder) and applying the retrodetect algorithm.
