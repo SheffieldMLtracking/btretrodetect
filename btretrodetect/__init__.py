@@ -529,7 +529,7 @@ class Retrodetect:
         
             
 class ColourRetrodetect(Retrodetect):
-    def __init__(self,Nbg_keep = 20,Nbg_skip = 5,normalisation_blur=50,patchSize=16,camid='camid',base_path='/home/pi/beephotos'):
+    def __init__(self,Nbg_keep = 20,Nbg_skip = 5,normalisation_blur=50,patchSize=16,camid='all',base_path='/home/pi/beephotos'):
         self.base_path = base_path
         offset_configfile = configpath+'offset.json'
         try:
