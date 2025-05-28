@@ -580,7 +580,7 @@ class Retrodetect:
 
     def save_image(self,photoitem,fn=None,keepimg=False):    
         if fn is None:
-            parents = "%s/%s/%s/%s/%s/%s/" % (self.base_path,datetime.date.today(),photoitem['session_name'],photoitem['set_name']+'_compact',photoitem['dev_id'],photoitem['camid'])
+            parents = "%s/%s/%s/%s/%s/%s/" % (self.base_path,datetime.date.today(),photoitem['session_name']+'_compact',photoitem['set_name']+'_compact',photoitem['dev_id'],photoitem['camid'])
             fn = parents + 'compact_' + photoitem['filename']
         print("===================")
         print(fn)
@@ -604,7 +604,7 @@ class Retrodetect:
         
             
 class ColourRetrodetect(Retrodetect):
-    def __init__(self,Nbg_keep = 20,Nbg_skip = 5,normalisation_blur=50,patchSize=16,camid='all',base_path='/home/pi/beephotos'):
+    def __init__(self,Nbg_keep = 20,Nbg_skip = 5,normalisation_blur=50,patchSize=16,camid='camid',base_path='/home/pi/beephotos'):
         self.base_path = base_path
         offset_configfile = configpath+'offset.json'
         try:
@@ -613,11 +613,11 @@ class ColourRetrodetect(Retrodetect):
                 try:
                     self.offset = offsetdata[camid]
                 except KeyError:
-                    print('Offset config file does not include the specific camera key (%s). To set correctly, create a file %s containing a dictionary, e.g. {"C-DA3075143": [20, 10]}. The dictionary key can either be the colour camera id, or it can be "all" to just be used by all cameras (if the unique camera key can not be found.' % (camid,offset_configfile))
+                    print('Offset config file does not include the specific camera key (%s). To set correctly, create a file %s containing a dictionary, e.g. {"%s": [20, 10]}. The dictionary key can either be the colour camera id, or it can be "all" to just be used by all cameras (if the unique camera key can not be found.' % (camid,offset_configfile,camid))
                     raise Exception("No offset data available: Can't generate colour tag file!!!")                    
             print("Using %s offset file (%d, %d)" % (offset_configfile, self.offset[0], self.offset[1]))
         except FileNotFoundError:
-            print('No offset file found!!! To set correctly, create a file %s containing a dictionary, e.g. {"C-DA3075143": [20, 10]}. The dictionary key can either be the colour camera id, or it can be "all" to just be used by all cameras (if the unique camera key can not be found.' % offset_configfile)
+            print('No offset file found!!! To set correctly, create a file %s containing a dictionary: {"%s": [20, 10]}. The dictionary key can either be the colour camera id, or it can be "all" to just be used by all cameras (if the unique camera key can not be found.' % (offset_configfile,camid))
             raise Exception("No offset data available: Can't generate colour tag file!!!") 
         
             #self.offset = [0,0]
