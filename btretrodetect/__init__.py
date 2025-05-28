@@ -461,6 +461,7 @@ class Retrodetect:
         debug_time_record('place insideimg inside the resized subtraction block')
         diff = img - resized_subtraction_img
         debug_time_record('compute diff')
+
         #photoitem['resized_subtraction_img'] = resized_subtraction_img.copy()
         
 
@@ -500,7 +501,7 @@ class Retrodetect:
         debug_time_record('saving image')
         debug_time_record()
         print('TOTAL TIME TAG FINDING [greyscale]: ',(datetime.datetime.now() - tempdebugtime).total_seconds())
-        
+
 
     def save_image(self,photoitem,fn=None,keepimg=False):    
         if fn is None:
@@ -537,6 +538,7 @@ class ColourRetrodetect(Retrodetect):
                 try:
                     self.offset = offsetdata[camid]
                 except KeyError:
+
                     print('Offset config file does not include the specific camera key (%s). To set correctly, create a file %s containing a dictionary, e.g. {"%s": [20, 10]}.' % (camid,offset_configfile,camid))
                     raise Exception("No offset data available: Can't generate colour tag file!!!")                    
             print("Using %s offset file (%d, %d)" % (offset_configfile, self.offset[0], self.offset[1]))
