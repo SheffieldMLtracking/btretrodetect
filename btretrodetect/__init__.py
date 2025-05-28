@@ -484,8 +484,12 @@ class Retrodetect:
                 raw_max = raw_img[y,x]
                 
                 
-                img_patch = img[y-self.patchSize:y+self.patchSize,x-self.patchSize:x+self.patchSize].astype(np.float32).copy()
-                diff_patch = diff[y-self.patchSize:y+self.patchSize,x-self.patchSize:x+self.patchSize].copy().astype(np.float32)
+                if scalingfactor>1:
+                    img_patch = None
+                    diff_patch = None
+                else:
+                    img_patch = img[y-self.patchSize:y+self.patchSize,x-self.patchSize:x+self.patchSize].astype(np.float32).copy()
+                    diff_patch = diff[y-self.patchSize:y+self.patchSize,x-self.patchSize:x+self.patchSize].copy().astype(np.float32)
                 #raw_patch = raw_img[y-self.patchSize:y+self.patchSize,x-self.patchSize:x+self.patchSize].copy().astype(np.float32)     
                 raw_patch = photoitem['img'][y*scalingfactor-self.patchSize:y*scalingfactor+self.patchSize,x*scalingfactor-self.patchSize:x*scalingfactor+self.patchSize].copy().astype(np.float32) 
                 
@@ -553,9 +557,9 @@ class ColourRetrodetect(Retrodetect):
         self.patchSize = patchSize
         self.normalisation_blur = normalisation_blur
         self.Nbg_use = Nbg_keep - Nbg_skip
-        self.previous_bg_imgs = None #keep track of previous imgs...
+        #self.previous_bg_imgs = None #keep track of previous imgs...
         self.idx = 0
-        self.imgcount = 0
+        #self.imgcount = 0
         self.processed_photoitems = []
 
         
@@ -569,16 +573,28 @@ class ColourRetrodetect(Retrodetect):
             del self.greyscale_photoitems[0]
         
             
-    #def process_colour_image(self,photoitem,gs_photoitem):
-    #    if 'imgpatches' not in gs_photoitem:
-    #        print("No image patches in greyscale photo")
-    #        return
-    #    photoitem['imgpatches'] = []
-    #    for patch in gs_photoitem['imgpatches']:
-    #        
-    #        photoitem['imgpatches'].append({'img_patch':patch, 'diff_patch':diff_patch, 'x':x, 'y':y, 'diff_max':diff_max, 'img_max':img_max, 'raw_max':raw_max})
-
     def process_colour_image(self,photoitem,imgpatches):
+        tempdebugtime = datetime.datetime.now()
+        raw_img = photoitem['img'].astype(float)
+        photoitem['imgpatches'] = []
+        for patch in imgpatches:
+            y,x = patch['y'],patch['x']
+            x = x + self.offset[0]
+            y = y + self.offset[1]
+            x = 2*(x//2)
+            y = 2*(y//2)
+            #img_patch = img[y-self.patchSize:y+self.patchSize,x-self.patchSize:x+self.patchSize].astype(np.float32).copy()
+            #diff_patch = diff[y-self.patchSize:y+self.patchSize,x-self.patchSize:x+self.patchSize].copy().astype(np.float32)        
+            raw_patch = raw_img[y-self.patchSize:y+self.patchSize,x-self.patchSize:x+self.patchSize].copy().astype(np.float32)
+            if 'retrodetect_predictions' in patch:
+                pred = patch['retrodetect_predictions']
+            else:
+                pred = None
+            photoitem['imgpatches'].append({'raw_patch':raw_patch, 'img_patch':None, 'diff_patch':None, 'x':x, 'y':y, 'retrodetect_predictions':pred})
+        self.save_image(photoitem)
+        print('TOTAL TIME [colour image]',(datetime.datetime.now() - tempdebugtime).total_seconds())
+        
+    def old_process_colour_image(self,photoitem,imgpatches):
         tempdebugtime = datetime.datetime.now()
         raw_img = photoitem['img'].astype(float)
         blurred = fast_gaussian_filter(raw_img,self.normalisation_blur)    
@@ -606,23 +622,8 @@ class ColourRetrodetect(Retrodetect):
     
         self.imgcount+=1
 
-        
-        #resized_subtraction_img = np.empty_like(img)
-        #insideimg = subtraction_img.repeat(blocksize,axis=0).repeat(blocksize,axis=1)
-        #resized_subtraction_img[:insideimg.shape[0],:insideimg.shape[1]] = insideimg    
-        #resized_subtraction_img[blocksize*offset:(blocksize*offset+insideimg.shape[0]),blocksize*offset:(blocksize*offset+insideimg.shape[1])] = insideimg
         diff = img - subtraction_img
-        #photoitem['resized_subtraction_img'] = resized_subtraction_img.copy()
-
-        #stored for debugging.
-        #photoitem['sub'] = subtraction_img
-        #photoitem['img'] = img
-
-        #We need to temporarily keep this 'diff' image, as this is a handy way of finding the
-        #a tag in the colour image near the one found in the greyscale image, but it needs to
-        #be removed later.
-        #photoitem['diff'] = diff.copy()
-
+        
         photoitem['imgpatches'] = []
         for patch in imgpatches:
             y,x = patch['y'],patch['x']
