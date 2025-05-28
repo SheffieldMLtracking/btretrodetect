@@ -9,6 +9,7 @@ import pickle
 from btretrodetect import Retrodetect, ColourRetrodetect
 import json
 import re
+import sys
 
 parser = argparse.ArgumentParser(description='Runs the retoreflector detection algorithm')
 parser.add_argument('imgpath',type=str,help='Path to images (it will recursively search for images in these paths).')
@@ -98,7 +99,10 @@ for possiblepath in [x[0] for x in os.walk(imgpath) if '/.' not in x[0]]:
     if False in campaths:
         camid = os.path.normpath(campaths[False]).split(os.path.sep)[-1] #get the camera id from the path, this will be the rightmost folder in the tree
         print("Colour camera id: %s" % camid)
-        crd = ColourRetrodetect(patchSize=24,camid=camid,base_path=base_path)
+        try:
+            crd = ColourRetrodetect(patchSize=24,camid=camid,base_path=base_path)
+        except:
+            sys.exit()
     grd.associated_colour_retrodetect = crd
     g_fns = sorted(glob(campaths[True]+'/*.np'))
     c_fns = None
