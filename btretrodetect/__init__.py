@@ -369,7 +369,7 @@ class TrainRetrodetectModel():
         
 
 class Retrodetect:
-    def __init__(self,Ndilated_keep = 20,Ndilated_skip = 5,Npatches = 20,patchSize = 16,patchThreshold=2,normalisation_blur=50,scalingfactor=5,base_path='/home/pi/beephotos'):
+    def __init__(self,Ndilated_keep = 20,Ndilated_skip = 5,Npatches = 20,patchSize = 16,patchThreshold=2,normalisation_blur=50,scalingfactor=5,base_path='/home/pi/beephotos',message_queue=None):
         self.scalingfactor = scalingfactor
         self.base_path = base_path
         self.Ndilated_keep = Ndilated_keep
@@ -380,6 +380,7 @@ class Retrodetect:
         self.normalisation_blur = normalisation_blur
         self.Ndilated_use = Ndilated_keep - Ndilated_skip
         self.previous_dilated_imgs = None #keep track of previous imgs...
+        self.message_queue = message_queue
         self.patchThreshold = 4
         self.idx = 0
         self.imgcount = 0
@@ -551,6 +552,8 @@ class Retrodetect:
         
         try:
             pickle.dump(compact_photoitem, open(fn,'wb'))
+            print("Saved compact photoitem: %s" % fn.split('/')[-1])
+            message_queue.put("Saved compact photoitem: %s" % fn.split('/')[-1])
         except FileNotFoundError:
             print("Parent Directory not found")
             os.makedirs(os.path.split(fn)[0])
@@ -559,7 +562,8 @@ class Retrodetect:
         
             
 class ColourRetrodetect(Retrodetect):
-    def __init__(self,Nbg_keep = 20,Nbg_skip = 5,normalisation_blur=50,patchSize=16,camid='all',base_path='/home/pi/beephotos',scalingfactor=5):
+    def __init__(self,Nbg_keep = 20,Nbg_skip = 5,normalisation_blur=50,patchSize=16,camid='all',base_path='/home/pi/beephotos',scalingfactor=5,message_queue=None):
+        self.message_queue=message_queue
         self.scalingfactor=scalingfactor
         self.base_path = base_path
         offset_configfile = configpath+'offset.json'
