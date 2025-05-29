@@ -13,6 +13,7 @@ import sys
 
 parser = argparse.ArgumentParser(description='Runs the retoreflector detection algorithm')
 parser.add_argument('imgpath',type=str,help='Path to images (it will recursively search for images in these paths).')
+parser.add_argument('--basepath',type=str,required=False,help='Path to save compact images.')
 parser.add_argument('--after',required=False,type=str,help='Only process images that were created after this time HH:MM:SS')
 parser.add_argument('--before',required=False,type=str,help='Only process images that were created before this time HH:MM:SS')
 #parser.add_argument('--refreshcache',help='Whether to refresh the cache',action="store_true")
@@ -93,7 +94,10 @@ for possiblepath in [x[0] for x in os.walk(imgpath) if '/.' not in x[0]]:
         print("[No .np files, you might need to go up a level?]")
         continue #not a folder full of np files, keep looking...
     campaths = get_cam_paths(possiblepath)
-    base_path = os.sep.join(os.path.abspath(possiblepath).split(os.sep)[:-4])
+    if args.basepath is None:
+        base_path = os.sep.join(os.path.abspath(possiblepath).split(os.sep)[:-4])
+    else:
+        base_path = args.basepath
     print("Using as base path to save compacted images %s" % base_path)
     grd = Retrodetect(base_path=base_path)
     if False in campaths:
