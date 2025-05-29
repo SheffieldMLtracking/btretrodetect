@@ -507,7 +507,7 @@ class Retrodetect:
             self.classify_patches(photoitem,groupby)
             debug_time_record('looping over %d patches...' % self.Npatches)
         photoitem['greyscale'] = True   
-        photoitem['blurred'] = blurred         
+        #photoitem['blurred'] = blurred         
         if self.associated_colour_retrodetect is not None:
             self.associated_colour_retrodetect.newgreyscaleimage(photoitem)
         debug_time_record('colour photo processing')
