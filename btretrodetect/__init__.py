@@ -18,7 +18,7 @@ def debug_time_record(msg=None):
     if msg is not None:
         elapsed = (datetime.datetime.now() - debugtime).total_seconds()
         debugtimesum+=elapsed
-        #print("%9.2f ms, %s" % (1000*elapsed,msg))
+        print("%9.2f ms, %s" % (1000*elapsed,msg))
     else:
         if debugtimesum>0: print("%9.2f ms, TOTAL" % (1000*debugtimesum))
         debugtimesum=0
@@ -355,7 +355,8 @@ class TrainRetrodetectModel():
         
 
 class Retrodetect:
-    def __init__(self,Ndilated_keep = 20,Ndilated_skip = 5,Npatches = 20,patchSize = 16,patchThreshold=2,normalisation_blur=50,base_path='/home/pi/beephotos'):
+    def __init__(self,Ndilated_keep = 20,Ndilated_skip = 5,Npatches = 20,patchSize = 16,patchThreshold=2,normalisation_blur=50,scalingfactor=5,base_path='/home/pi/beephotos'):
+        self.scalingfactor = scalingfactor
         self.base_path = base_path
         self.Ndilated_keep = Ndilated_keep
         self.Ndilated_skip = Ndilated_skip
@@ -416,8 +417,8 @@ class Retrodetect:
             return
         debug_time_record() 
         print(photoitem['img'].dtype)
-        scalingfactor = 5
-        smallmaxedimage = getblockmaxedimage(photoitem['img'],scalingfactor,1,resize=False)
+        
+        smallmaxedimage = getblockmaxedimage(photoitem['img'],self.scalingfactor,1,resize=False)
         #smallmaxedimage = photoitem['img']
         debug_time_record('reduce image size')            
         raw_img = smallmaxedimage.astype(float)
@@ -435,10 +436,10 @@ class Retrodetect:
         debug_time_record('dilate image computed')
         if self.previous_dilated_imgs is None:
             self.previous_dilated_imgs = np.zeros(list(dilated_img.shape)+[self.Ndilated_keep])
-            self.previous_imgs = np.zeros(list(photoitem['img'].shape)+[self.Ndilated_keep])
+            #self.previous_imgs = np.zeros(list(photoitem['img'].shape)+[self.Ndilated_keep])
             debug_time_record('creating previous dilated images array (one off)')
         self.previous_dilated_imgs[:,:,self.idx] = dilated_img
-        self.previous_imgs[:,:,self.idx] = photoitem['img']
+        #self.previous_imgs[:,:,self.idx] = photoitem['img']
         
         debug_time_record('placing dilated image in previous dilated imgs array')
         self.idx = (self.idx + 1) % self.Ndilated_keep
@@ -484,30 +485,39 @@ class Retrodetect:
                 raw_max = raw_img[y,x]
                 
                 
-                if scalingfactor>1:
+                if self.scalingfactor>1:
                     img_patch = None
                     diff_patch = None
                 else:
                     img_patch = img[y-self.patchSize:y+self.patchSize,x-self.patchSize:x+self.patchSize].astype(np.float32).copy()
                     diff_patch = diff[y-self.patchSize:y+self.patchSize,x-self.patchSize:x+self.patchSize].copy().astype(np.float32)
                 #raw_patch = raw_img[y-self.patchSize:y+self.patchSize,x-self.patchSize:x+self.patchSize].copy().astype(np.float32)     
-                raw_patch = photoitem['img'][y*scalingfactor-self.patchSize:y*scalingfactor+self.patchSize,x*scalingfactor-self.patchSize:x*scalingfactor+self.patchSize].copy().astype(np.float32) 
+                raw_patch = photoitem['img'][y*self.scalingfactor-self.patchSize:y*self.scalingfactor+self.patchSize,x*self.scalingfactor-self.patchSize:x*self.scalingfactor+self.patchSize].copy().astype(np.float32) 
                 
                 diff[max(0,y-self.delSize):min(diff.shape[0],y+self.delSize),max(0,x-self.delSize):min(diff.shape[1],x+self.delSize)]=-5000
-                photoitem['imgpatches'].append({'raw_patch':raw_patch, 'img_patch':img_patch, 'diff_patch':diff_patch, 'x':x*scalingfactor, 'y':y*scalingfactor, 'diff_max':diff_max, 'img_max':img_max, 'raw_max':raw_max})
+                photoitem['imgpatches'].append({'raw_patch':raw_patch, 'img_patch':img_patch, 'diff_patch':diff_patch, 'x':x*self.scalingfactor, 'y':y*self.scalingfactor, 'diff_max':diff_max, 'img_max':img_max, 'raw_max':raw_max})
             self.classify_patches(photoitem,groupby)
             debug_time_record('looping over %d patches...' % self.Npatches)
         photoitem['greyscale'] = True            
         if self.associated_colour_retrodetect is not None:
             self.associated_colour_retrodetect.newgreyscaleimage(photoitem)
         debug_time_record('colour photo processing')
-        self.save_image(photoitem)
+        self.save_image(photoitem,lowres_image=smallmaxedimage)
         debug_time_record('saving image')
         debug_time_record()
         print('TOTAL TIME TAG FINDING [greyscale]: ',(datetime.datetime.now() - tempdebugtime).total_seconds())
 
 
-    def save_image(self,photoitem,fn=None,keepimg=False):    
+    def save_image(self,photoitem,fn=None,keepimg=None,lowres_image=None):
+        """
+        Save a (potentially compacted) version of the photoitem.
+        - photoitem: the photoitem dictionary to save
+        - fn: the filename to save to (if none, then it tries to save to base_path/datetime/session_name_compact/set_name_compact/dev_id/camid/compact_originalfilename)
+            (where originalfilename comes from the photoitem['filename'])
+        - keepimg: whether to keep the full image in the file. If photoitem['index'] is a multiple of 100 it keeps it, if this isn't set.
+        - lowres_image: rather than encode the full size image into the jpeg, we can encode the lowres one. This also allows us to brighten it (a necessary step I've found
+                            to avoid the jpeg algorithm just blanking the whole image).
+        """    
         if fn is None:
             parents = "%s/%s/%s/%s/%s/%s/" % (self.base_path,datetime.date.today(),photoitem['session_name']+'_compact',photoitem['set_name']+'_compact',photoitem['dev_id'],photoitem['camid'])
             fn = parents + 'compact_' + photoitem['filename']
@@ -515,10 +525,16 @@ class Retrodetect:
         print(fn)
         print("===================")        
         compact_photoitem = photoitem #.copy() #saves time and memory if we actually keep [and trash] the photoitem!
-        if photoitem['index']%100==0: keepimg = True #every 100 we keep the image
-        scaledimg = photoitem['img'].astype(float)*10
+        if keepimg is None: keepimg = photoitem['index']%100==0 #every 100 we keep the image
+        
+        if lowres_image is not None:
+            scaledimg = lowres_image
+        else:
+            scaledimg = photoitem['img']
+        scaledimg = scaledimg.astype(float)*10
         scaledimg[scaledimg>255]=255
         compact_photoitem['jpgimg'] = simplejpeg.encode_jpeg(scaledimg[:,:,None].astype(np.uint8),colorspace='GRAY',quality=8)
+        compact_photoitem['jpgimg_processing'] = {'scalingfactor':self.scalingfactor, 'multiplier':10}
         if not keepimg: compact_photoitem['img'] = None
         
         #pickle.dump(compact_photoitem, open(fn,'wb'))
@@ -533,7 +549,8 @@ class Retrodetect:
         
             
 class ColourRetrodetect(Retrodetect):
-    def __init__(self,Nbg_keep = 20,Nbg_skip = 5,normalisation_blur=50,patchSize=16,camid='all',base_path='/home/pi/beephotos'):
+    def __init__(self,Nbg_keep = 20,Nbg_skip = 5,normalisation_blur=50,patchSize=16,camid='all',base_path='/home/pi/beephotos',scalingfactor=5):
+        self.scalingfactor=scalingfactor
         self.base_path = base_path
         offset_configfile = configpath+'offset.json'
         try:
@@ -572,7 +589,6 @@ class ColourRetrodetect(Retrodetect):
         if len(self.greyscale_photoitems)>10:
             del self.greyscale_photoitems[0]
         
-            
     def process_colour_image(self,photoitem,imgpatches):
         tempdebugtime = datetime.datetime.now()
         raw_img = photoitem['img'].astype(float)
@@ -594,55 +610,6 @@ class ColourRetrodetect(Retrodetect):
         self.save_image(photoitem)
         print('TOTAL TIME [colour image]',(datetime.datetime.now() - tempdebugtime).total_seconds())
         
-    def old_process_colour_image(self,photoitem,imgpatches):
-        tempdebugtime = datetime.datetime.now()
-        raw_img = photoitem['img'].astype(float)
-        blurred = fast_gaussian_filter(raw_img,self.normalisation_blur)    
-        img = raw_img/(1+blurred)   
-        if self.previous_bg_imgs is None:
-            self.previous_bg_imgs = np.zeros(list(img.shape)+[self.Nbg_keep])
-        self.previous_bg_imgs[:,:,self.idx] = img
-    
-        self.idx = (self.idx + 1) % self.Nbg_keep
-
-        #how many items are we adding here...
-        #if idx+bg_use<bg_keep, then it is simply #e.g. Nbg_use = Nbg_keep - Nbg_skip
-        #otherwise,
-        #it is:
-        # #e.g. (Nbg_keep-idx) + idx-Nbg_skip = Nbg_keep - Nbg_skip
-        #so it is always Nbg_keep - Nbg_skip = Nbg_use
-        subtraction_img = np.sum(self.previous_bg_imgs[:,:,self.idx:(self.idx+self.Nbg_use)],2)   
-        if self.idx+self.Nbg_use>self.Nbg_keep:
-            other_subtraction_img = np.sum(self.previous_bg_imgs[:,:,:(self.idx-self.Nbg_skip)],2) #idx-bgskip
-            subtraction_img = np.sum(np.array([other_subtraction_img,subtraction_img]),0)
-        #subtraction_img = np.sum(self.previous_bg_imgs,2)
-        if min(self.Nbg_use,self.imgcount-self.Nbg_skip)>0:
-            subtraction_img=subtraction_img.astype(float)/min(self.Nbg_use,self.imgcount-self.Nbg_skip)
-        
-    
-        self.imgcount+=1
-
-        diff = img - subtraction_img
-        
-        photoitem['imgpatches'] = []
-        for patch in imgpatches:
-            y,x = patch['y'],patch['x']
-            x = x + self.offset[0]
-            y = y + self.offset[1]
-            x = 2*(x//2)
-            y = 2*(y//2)
-
-            img_patch = img[y-self.patchSize:y+self.patchSize,x-self.patchSize:x+self.patchSize].astype(np.float32).copy()
-            diff_patch = diff[y-self.patchSize:y+self.patchSize,x-self.patchSize:x+self.patchSize].copy().astype(np.float32)        
-            raw_patch = raw_img[y-self.patchSize:y+self.patchSize,x-self.patchSize:x+self.patchSize].copy().astype(np.float32)
-            if 'retrodetect_predictions' in patch:
-                pred = patch['retrodetect_predictions']
-            else:
-                pred = None
-            photoitem['imgpatches'].append({'raw_patch':raw_patch, 'img_patch':img_patch, 'diff_patch':diff_patch, 'x':x, 'y':y, 'retrodetect_predictions':pred})
-        self.save_image(photoitem)
-        print('TOTAL TIME [colour image]',(datetime.datetime.now() - tempdebugtime).total_seconds())
-
     def match_images(self):
         """
         Tries to match the images in self.unassociated_photoitems with those in self.greyscale_photoitems,
