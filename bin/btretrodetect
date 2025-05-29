@@ -195,9 +195,12 @@ for possiblepath in [x[0] for x in os.walk(imgpath) if '/.' not in x[0]]:
 
         grey_datapath = campaths[True]+'/'+args.sourcename
 
-        os.makedirs(grey_datapath,exist_ok=True)
-        if c_fn is not None: os.makedirs(colour_datapath,exist_ok=True)
-        datafilename = imgfilename[:-2]+'json'
-        if c_fn is not None: json.dump(colour_json_list,open(colour_datapath+'/'+datafilename,'w'))
-        json.dump(grey_json_list,open(grey_datapath+'/'+datafilename,'w'))        
+        try:
+            os.makedirs(grey_datapath,exist_ok=True)
+            if c_fn is not None: os.makedirs(colour_datapath,exist_ok=True)
+            datafilename = imgfilename[:-2]+'json'
+            if c_fn is not None: json.dump(colour_json_list,open(colour_datapath+'/'+datafilename,'w'))
+            json.dump(grey_json_list,open(grey_datapath+'/'+datafilename,'w'))        
+        except:
+            print("Failed to save btretrodetect data object")
         print("")
