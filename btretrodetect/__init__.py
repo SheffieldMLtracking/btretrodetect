@@ -553,7 +553,7 @@ class Retrodetect:
         try:
             pickle.dump(compact_photoitem, open(fn,'wb'))
             print("Saved compact photoitem: %s" % fn.split('/')[-1])
-            message_queue.put("Saved compact photoitem: %s" % fn.split('/')[-1])
+            self.message_queue.put("Saved compact photoitem: %s" % fn.split('/')[-1])
         except FileNotFoundError:
             print("Parent Directory not found")
             os.makedirs(os.path.split(fn)[0])
