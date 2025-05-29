@@ -158,11 +158,17 @@ for possiblepath in [x[0] for x in os.walk(imgpath) if '/.' not in x[0]]:
             #print("No plausible patches in image %s." % fn)
             continue
         for patch in photoitem['imgpatches']:
-            if patch['retrodetect_predictions']<float(args.threshold):
+            if 'retrodetect_predictions' in patch:
+                retrodetect_predictions = patch['retrodetect_predictions']
+                if retrodetect_predictions is None: retrodetect_predictions=1
+            else:
+               retrodetect_predictions = 1 #not sure what to put as we can't assess this.
+                   
+            if retrodetect_predictions<float(args.threshold):
                 print(".",end="") 
                 continue #not a tag
             print("x",end="")
-            json_item = {"x":int(patch['x']),"y":int(patch['y']), "source": args.sourcename, "version": "btretrodetect, v2.0", "meta":"", "label":"rd", "confidence": patch['retrodetect_predictions']}
+            json_item = {"x":int(patch['x']),"y":int(patch['y']), "source": args.sourcename, "version": "btretrodetect, v2.0", "meta":"", "label":"rd", "confidence": retrodetect_predictions}
             grey_json_list.append(json_item)
 
         if c_fn is not None:
@@ -170,11 +176,16 @@ for possiblepath in [x[0] for x in os.walk(imgpath) if '/.' not in x[0]]:
                 #print("No plausible patches in image %s." % fn)
                 continue
             for patch in colourphotoitem['imgpatches']:
-                if patch['retrodetect_predictions']<float(args.threshold):
+                if 'retrodetect_predictions' in patch:
+                    retrodetect_predictions = patch['retrodetect_predictions']
+                    if retrodetect_predictions is None: retrodetect_predictions=1
+                else:
+                   retrodetect_predictions = 1 #not sure what to put as we can't assess this. 
+                if retrodetect_predictions<float(args.threshold):
                     print(".",end="") 
                     continue #not a tag
                 print("x",end="")
-                json_item = {"x":int(patch['x']),"y":int(patch['y']), "source": args.sourcename, "version": "btretrodetect, v2.0", "meta":"", "label":"rd", "confidence": patch['retrodetect_predictions']}
+                json_item = {"x":int(patch['x']),"y":int(patch['y']), "source": args.sourcename, "version": "btretrodetect, v2.0", "meta":"", "label":"rd", "confidence":retrodetect_predictions}
                 colour_json_list.append(json_item)
             colour_datapath = campaths[False]+'/'+args.sourcename
 

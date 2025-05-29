@@ -18,9 +18,9 @@ def debug_time_record(msg=None):
     if msg is not None:
         elapsed = (datetime.datetime.now() - debugtime).total_seconds()
         debugtimesum+=elapsed
-        print("%9.2f ms, %s" % (1000*elapsed,msg))
+        #print("%9.2f ms, %s" % (1000*elapsed,msg))
     else:
-        if debugtimesum>0: print("%9.2f ms, TOTAL" % (1000*debugtimesum))
+        #if debugtimesum>0: print("%9.2f ms, TOTAL" % (1000*debugtimesum))
         debugtimesum=0
         
     debugtime = datetime.datetime.now()
@@ -384,41 +384,30 @@ class Retrodetect:
         self.idx = 0
         self.imgcount = 0
         self.associated_colour_retrodetect = None
-    
-    def classify_patches(self,photoitem,groupby='camera'):
         clfsfile = configpath+'clfs.pkl'
         try:
-            clfs = pickle.load(open(clfsfile,'rb'))
+            self.clfs = pickle.load(open(clfsfile,'rb'))
+            clfname = 'all'
+            if clfname not in self.clfs:
+                print("Classifier not found for %s" % clfname)
+                self.clfs = None
+            print("Using classifier %s in %s" % (clfname,clfsfile))
+            self.clfs = self.clfs[clfname]
         except:
-            print("No classifiers found.")
-            return
-            
-        ##TODO I've added code to bee_track to now save this info into the photoitem,
-        # photo_object['session_name'] = session_name
-        # photo_object['set_name'] = set_name
-        # photo_object['dev_id'] = self.devid.value
-        # photo_object['camid'] = camid
-        #but this data isn't in the examples I'm using. Later we should incorporate.
+            print("No classifiers found (looked in %s)." % clfsfile)
+            self.clfs = None
         
-        #print("====")
-        #print(photoitem['filename'])
-        #if groupby=='camera':
-        #    clfname = os.path.normpath(photoitem['filename']).split(os.sep)[-2]
-        #if groupby=='set':
-        #    clfname = '/'.join(os.path.normpath(photoitem['filename']).split(os.sep)[-4:-1])
-        #if groupby=='all':
-        clfname = 'all'
-
-        if clfname not in clfs:
-            print("Classifier not found for %s" % clfname)
-            return None
+    def classify_patches(self,photoitem,groupby='camera'):
         X = []
         for patch in photoitem['imgpatches']:
-            stats = getstats(patch)
-            if stats is None:
-                res = False
+            if self.clfs is None: 
+                res = None
             else:
-                res = clfs[clfname].predict_proba(np.array(stats)[None,:])[0,1]
+                stats = getstats(patch)
+                if stats is None:
+                    res = False
+                else:
+                    res = self.clfs.predict_proba(np.array(stats)[None,:])[0,1]
             patch['retrodetect_predictions'] = res
     
     def process_image(self,photoitem,groupby='camera'): ##TODO: PASS THIS METHOD THE CLASSIFIER WE WANT TO USE... AS IT WON'T HAVE ACCESS TO A FILENAME/PATH NECESSARILY
@@ -430,7 +419,7 @@ class Retrodetect:
             print("no 'img' image object. can't process.")
             return
         debug_time_record() 
-        print(photoitem['img'].dtype)
+
         
         smallmaxedimage = getblockmaxedimage(photoitem['img'],self.scalingfactor,1,resize=False)
         #smallmaxedimage = photoitem['img']
@@ -484,14 +473,10 @@ class Retrodetect:
         #a tag in the colour image near the one found in the greyscale image, but it needs to
         #be removed later.
         #photoitem['diff'] = diff.copy()
-        print("Image shape")
-        print(img.shape)
         if self.imgcount>2: #self.Ndilated_keep: #we have collected enough to start tracking...
             photoitem['imgpatches'] = []
             for p in range(self.Npatches):
                 y,x = np.unravel_index(diff.argmax(), diff.shape)
-                #photoitem['img']
-                print(x,y)
                 
                 diff_max = diff[y,x]
                 if diff_max<self.patchThreshold: break #we don't need to save patches that are incredibly faint.
@@ -519,7 +504,7 @@ class Retrodetect:
                 diff[max(0,y-self.delSize):min(diff.shape[0],y+self.delSize),max(0,x-self.delSize):min(diff.shape[1],x+self.delSize)]=-5000
                 photoitem['imgpatches'].append({'raw_patch':raw_patch, 'img_patch':img_patch, 'diff_patch':diff_patch, 'x':x*self.scalingfactor, 'y':y*self.scalingfactor, 'diff_max':diff_max, 'img_max':img_max, 'raw_max':raw_max})
             
-            #self.classify_patches(photoitem,groupby)
+            self.classify_patches(photoitem,groupby)
             debug_time_record('looping over %d patches...' % self.Npatches)
         photoitem['greyscale'] = True   
         photoitem['blurred'] = blurred         
@@ -529,7 +514,7 @@ class Retrodetect:
         self.save_image(photoitem,lowres_image=smallmaxedimage)
         debug_time_record('saving image')
         debug_time_record()
-        print('TOTAL TIME TAG FINDING [greyscale]: ',(datetime.datetime.now() - tempdebugtime).total_seconds())
+        #print('TOTAL TIME TAG FINDING [greyscale]: ',(datetime.datetime.now() - tempdebugtime).total_seconds())
 
 
     def save_image(self,photoitem,fn=None,keepimg=None,lowres_image=None):
@@ -545,9 +530,8 @@ class Retrodetect:
         if fn is None:
             parents = "%s/%s/%s/%s/%s/%s/" % (self.base_path,datetime.date.today(),photoitem['session_name']+'_compact',photoitem['set_name']+'_compact',photoitem['dev_id'],photoitem['camid'])
             fn = parents + 'compact_' + photoitem['filename']
-        print("===================")
-        print(fn)
-        print("===================")        
+        #print(fn)
+        #print("===================")        
         compact_photoitem = photoitem #.copy() #saves time and memory if we actually keep [and trash] the photoitem!
         if keepimg is None: keepimg = photoitem['index']%100==0 #every 100 we keep the image
         
@@ -634,7 +618,7 @@ class ColourRetrodetect(Retrodetect):
                 pred = None
             photoitem['imgpatches'].append({'raw_patch':raw_patch, 'img_patch':None, 'diff_patch':None, 'x':x, 'y':y, 'retrodetect_predictions':pred})
         self.save_image(photoitem)
-        print('TOTAL TIME [colour image]',(datetime.datetime.now() - tempdebugtime).total_seconds())
+        #print('TOTAL TIME [colour image]',(datetime.datetime.now() - tempdebugtime).total_seconds())
         
     def match_images(self):
         """
@@ -645,7 +629,7 @@ class ColourRetrodetect(Retrodetect):
         for photo in self.unassociated_photoitems:
             match = [gs_photo for gs_photo in self.greyscale_photoitems if photo['record']['triggertime']==gs_photo['record']['triggertime']]
             if len(match)>0:
-                print("MATCH: %s=%s" % (photo['filename'], match[0]['filename']))
+                #print("MATCH: %s=%s" % (photo['filename'], match[0]['filename']))
                 self.greyscale_photoitems.remove(match[0])
                 photo['greyscale'] = False
                 if ('imgpatches' not in match[0]): #this greyscale image doesn't have any patches
