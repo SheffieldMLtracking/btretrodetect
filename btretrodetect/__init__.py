@@ -429,9 +429,9 @@ class Retrodetect:
         img = raw_img/(1+blurred)
         debug_time_record('normalise with blurred image')  
         #photoitem['normalised_img'] = img.copy()
-        blocksize = 6
-        offset = 2
-        dilated_img = getblockmaxedimage(img,blocksize,offset,resize=False)
+        blocksize = 1#6
+        offset = 0#2
+        dilated_img = img #getblockmaxedimage(img,blocksize,offset,resize=False)
         debug_time_record('dilate image computed')
         if self.previous_dilated_imgs is None:
             self.previous_dilated_imgs = np.zeros(list(dilated_img.shape)+[self.Ndilated_keep])
@@ -469,8 +469,8 @@ class Retrodetect:
         #a tag in the colour image near the one found in the greyscale image, but it needs to
         #be removed later.
         #photoitem['diff'] = diff.copy()
-
-        
+        print("Image shape")
+        print(img.shape)
         if self.imgcount>2: #self.Ndilated_keep: #we have collected enough to start tracking...
             photoitem['imgpatches'] = []
             for p in range(self.Npatches):
