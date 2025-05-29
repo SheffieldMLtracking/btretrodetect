@@ -77,7 +77,7 @@ def gaussian_filter(img, sigma,croptosize=True):
     if croptosize: blurredimg = blurredimg[L*2:-L*2,L*2:-L*2]
     return blurredimg
 
-def fast_gaussian_filter(img, sigma, blocksize = 12):
+def fast_gaussian_filter(img, sigma, blocksize = 6):
     """
     Applies a gaussian smoothing kernel on a 2d img
     using numpy's 1d convolve function.
@@ -149,6 +149,20 @@ def getblockmaxedimage(img,blocksize, offset,resize=True):
     else:
         out_img = max_img
     return out_img    
+    
+def rescalePatch(im,x,y,patchSize,blocksize):
+    """
+    Returns a patchSize*2 x patchSize*2 array of a square around point x,y, from image in im;
+    the x and y coordinates relate to a scaled-up image, one that is 'blocksize' times larger than im.
+
+    no interpolation.
+    """
+    if (x<patchSize) or (y<patchSize) or ((x+patchSize+blocksize)//blocksize>im.shape[1]) or ((y+patchSize+blocksize)//blocksize>im.shape[0]):
+        raise ValueError("part of patch outside image. Patch coordinate: (x=%d,y=%d), Image shape: (shape[0]=%d,shape[1]=%d), blocksize=%d, patchSize=%d" % (x,y,im.shape[0],im.shape[1],blocksize,patchSize))
+    a = im[(y-patchSize)//blocksize:(y+patchSize+blocksize)//blocksize,(x-patchSize)//blocksize:(x+patchSize+blocksize)//blocksize]
+    a = a.repeat(blocksize,axis=0).repeat(blocksize,axis=1)
+    a = a[(y-patchSize)%blocksize:(patchSize*2)+(y-patchSize)%blocksize,(x-patchSize)%blocksize:(patchSize*2)+(x-patchSize)%blocksize]
+    return a
     
 def getringstats(patchimg):
     """
@@ -485,20 +499,30 @@ class Retrodetect:
                 raw_max = raw_img[y,x]
                 
                 
+                raw_patch = photoitem['img'][y*self.scalingfactor-self.patchSize:y*self.scalingfactor+self.patchSize,x*self.scalingfactor-self.patchSize:x*self.scalingfactor+self.patchSize].copy().astype(np.float32) 
                 if self.scalingfactor>1:
-                    img_patch = None
-                    diff_patch = None
+                    try:
+                        hires_blurred = rescalePatch(blurred,x*self.scalingfactor,y*self.scalingfactor,self.patchSize,self.scalingfactor)
+                        img_patch = raw_patch/hires_blurred
+                        diff_patch = img_patch - rescalePatch(resized_subtraction_img,x*self.scalingfactor,y*self.scalingfactor,self.patchSize,self.scalingfactor)
+                    except Exception as e:
+                        print("Skipping patch")
+                        print(e)
+                        #continue...?
+                        continue #skip this patch?
                 else:
                     img_patch = img[y-self.patchSize:y+self.patchSize,x-self.patchSize:x+self.patchSize].astype(np.float32).copy()
                     diff_patch = diff[y-self.patchSize:y+self.patchSize,x-self.patchSize:x+self.patchSize].copy().astype(np.float32)
                 #raw_patch = raw_img[y-self.patchSize:y+self.patchSize,x-self.patchSize:x+self.patchSize].copy().astype(np.float32)     
-                raw_patch = photoitem['img'][y*self.scalingfactor-self.patchSize:y*self.scalingfactor+self.patchSize,x*self.scalingfactor-self.patchSize:x*self.scalingfactor+self.patchSize].copy().astype(np.float32) 
+                
                 
                 diff[max(0,y-self.delSize):min(diff.shape[0],y+self.delSize),max(0,x-self.delSize):min(diff.shape[1],x+self.delSize)]=-5000
                 photoitem['imgpatches'].append({'raw_patch':raw_patch, 'img_patch':img_patch, 'diff_patch':diff_patch, 'x':x*self.scalingfactor, 'y':y*self.scalingfactor, 'diff_max':diff_max, 'img_max':img_max, 'raw_max':raw_max})
-            self.classify_patches(photoitem,groupby)
+            
+            #self.classify_patches(photoitem,groupby)
             debug_time_record('looping over %d patches...' % self.Npatches)
-        photoitem['greyscale'] = True            
+        photoitem['greyscale'] = True   
+        photoitem['blurred'] = blurred         
         if self.associated_colour_retrodetect is not None:
             self.associated_colour_retrodetect.newgreyscaleimage(photoitem)
         debug_time_record('colour photo processing')
@@ -516,7 +540,7 @@ class Retrodetect:
             (where originalfilename comes from the photoitem['filename'])
         - keepimg: whether to keep the full image in the file. If photoitem['index'] is a multiple of 100 it keeps it, if this isn't set.
         - lowres_image: rather than encode the full size image into the jpeg, we can encode the lowres one. This also allows us to brighten it (a necessary step I've found
-                            to avoid the jpeg algorithm just blanking the whole image).
+                            to avoid the jpeg algorithm just blanking the whole image). Although this looks terrible, so skipping for now!
         """    
         if fn is None:
             parents = "%s/%s/%s/%s/%s/%s/" % (self.base_path,datetime.date.today(),photoitem['session_name']+'_compact',photoitem['set_name']+'_compact',photoitem['dev_id'],photoitem['camid'])
@@ -529,12 +553,14 @@ class Retrodetect:
         
         if lowres_image is not None:
             scaledimg = lowres_image
+            scalingfactor = self.scalingfactor
         else:
             scaledimg = photoitem['img']
+            scalingfactor = 1
         scaledimg = scaledimg.astype(float)*10
         scaledimg[scaledimg>255]=255
-        compact_photoitem['jpgimg'] = simplejpeg.encode_jpeg(scaledimg[:,:,None].astype(np.uint8),colorspace='GRAY',quality=8)
-        compact_photoitem['jpgimg_processing'] = {'scalingfactor':self.scalingfactor, 'multiplier':10}
+        compact_photoitem['jpgimg'] = simplejpeg.encode_jpeg(scaledimg[:,:,None].astype(np.uint8),colorspace='GRAY',quality=40)
+        compact_photoitem['jpgimg_processing'] = {'scalingfactor':scalingfactor, 'multiplier':10}
         if not keepimg: compact_photoitem['img'] = None
         
         #pickle.dump(compact_photoitem, open(fn,'wb'))
