@@ -540,12 +540,15 @@ class Retrodetect:
         if lowres_image is not None:
             scaledimg = lowres_image
             scalingfactor = self.scalingfactor
+            quality = 40
         else:
-            scaledimg = photoitem['img']
-            scalingfactor = 1
+            scaledimg = photoitem['img'][::5,::5] #quick hack to get filesize down of colour images...
+            scalingfactor = 5
+            quality = 40
         scaledimg = scaledimg.astype(float)*10
         scaledimg[scaledimg>255]=255
-        compact_photoitem['jpgimg'] = simplejpeg.encode_jpeg(scaledimg[:,:,None].astype(np.uint8),colorspace='GRAY',quality=40)
+        
+        compact_photoitem['jpgimg'] = simplejpeg.encode_jpeg(scaledimg[:,:,None].astype(np.uint8),colorspace='GRAY',quality=quality)
         compact_photoitem['jpgimg_processing'] = {'scalingfactor':scalingfactor, 'multiplier':10}
         if not keepimg: compact_photoitem['img'] = None
         
