@@ -100,13 +100,19 @@ for possiblepath in [x[0] for x in os.walk(imgpath) if '/.' not in x[0]]:
         base_path = args.basepath
     print("Using as base path to save compacted images %s" % base_path)
     grd = Retrodetect(base_path=base_path)
+    crd = None
     if False in campaths:
         camid = os.path.normpath(campaths[False]).split(os.path.sep)[-1] #get the camera id from the path, this will be the rightmost folder in the tree
         print("Colour camera id: %s" % camid)
         try:
             crd = ColourRetrodetect(patchSize=24,camid=camid,base_path=base_path)
-        except:
-            sys.exit()
+        except Exception as e:
+            print("Failed to add colour retrodetection")
+            print(e)
+            crd = None
+            #sys.exit()
+    else:
+        print("No colour camera added")
     grd.associated_colour_retrodetect = crd
     g_fns = sorted(glob(campaths[True]+'/*.np'))
     c_fns = None
@@ -146,14 +152,17 @@ for possiblepath in [x[0] for x in os.walk(imgpath) if '/.' not in x[0]]:
         
         grd.process_image(photoitem,args.groupby)
         if c_fn is not None:
-            colourphotoitem = pickle.load(open(c_fn,'rb'))
-            fnpathsplit = os.path.abspath(c_fn).split(os.sep)
-            if 'camid' not in colourphotoitem: colourphotoitem['camid'] = fnpathsplit[-2]
-            if 'dev_id' not in colourphotoitem: colourphotoitem['dev_id'] = fnpathsplit[-3]
-            if 'set_name' not in colourphotoitem: colourphotoitem['set_name'] = fnpathsplit[-4]
-            if 'session_name' not in colourphotoitem: colourphotoitem['session_name'] = fnpathsplit[-5]
-            
-            crd.process_image(colourphotoitem)
+            if crd is None:
+                print("Unable to process colour image (colour retrodetection object not available).")
+            else:
+                colourphotoitem = pickle.load(open(c_fn,'rb'))
+                fnpathsplit = os.path.abspath(c_fn).split(os.sep)
+                if 'camid' not in colourphotoitem: colourphotoitem['camid'] = fnpathsplit[-2]
+                if 'dev_id' not in colourphotoitem: colourphotoitem['dev_id'] = fnpathsplit[-3]
+                if 'set_name' not in colourphotoitem: colourphotoitem['set_name'] = fnpathsplit[-4]
+                if 'session_name' not in colourphotoitem: colourphotoitem['session_name'] = fnpathsplit[-5]
+                
+                crd.process_image(colourphotoitem)
             
         grey_json_list = []
         colour_json_list = []

@@ -414,7 +414,8 @@ class Retrodetect:
     def process_image(self,photoitem,groupby='camera'): ##TODO: PASS THIS METHOD THE CLASSIFIER WE WANT TO USE... AS IT WON'T HAVE ACCESS TO A FILENAME/PATH NECESSARILY
         tempdebugtime = datetime.datetime.now()
         if 'imgpatches' in photoitem:
-            print('[already processed]')
+            self.classify_patches(photoitem,groupby)
+            print('[already processed greyscale image]')
             return
         if photoitem['img'] is None:
             print("no 'img' image object. can't process.")
@@ -489,7 +490,7 @@ class Retrodetect:
                 if self.scalingfactor>1:
                     try:
                         hires_blurred = rescalePatch(blurred,x*self.scalingfactor,y*self.scalingfactor,self.patchSize,self.scalingfactor)
-                        img_patch = raw_patch/hires_blurred
+                        img_patch = raw_patch/(hires_blurred+1)
                         diff_patch = img_patch - rescalePatch(resized_subtraction_img,x*self.scalingfactor,y*self.scalingfactor,self.patchSize,self.scalingfactor)
                     except Exception as e:
                         print("Skipping patch")
@@ -553,7 +554,7 @@ class Retrodetect:
         try:
             pickle.dump(compact_photoitem, open(fn,'wb'))
             print("Saved compact photoitem: %s" % fn.split('/')[-1])
-            self.message_queue.put("Saved compact photoitem: %s" % fn.split('/')[-1])
+            if self.message_queue is not None: self.message_queue.put("Saved compact photoitem: %s" % fn.split('/')[-1])
         except FileNotFoundError:
             print("Parent Directory not found")
             os.makedirs(os.path.split(fn)[0])
