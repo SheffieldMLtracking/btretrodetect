@@ -369,8 +369,9 @@ class TrainRetrodetectModel():
         
 
 class Retrodetect:
-    def __init__(self,Ndilated_keep = 20,Ndilated_skip = 5,Npatches = 20,patchSize = 16,patchThreshold=2,normalisation_blur=50,scalingfactor=5,base_path='/home/pi/beephotos',message_queue=None):
+    def __init__(self,Ndilated_keep = 20,Ndilated_skip = 5,Npatches = 40,patchSize = 16,patchThreshold=2,normalisation_blur=50,scalingfactor=5,base_path='/home/pi/beephotos',message_queue=None):
         self.scalingfactor = scalingfactor
+        print("Scaling factor set to %d" % self.scalingfactor)
         self.base_path = base_path
         self.Ndilated_keep = Ndilated_keep
         self.Ndilated_skip = Ndilated_skip
@@ -381,7 +382,7 @@ class Retrodetect:
         self.Ndilated_use = Ndilated_keep - Ndilated_skip
         self.previous_dilated_imgs = None #keep track of previous imgs...
         self.message_queue = message_queue
-        self.patchThreshold = 4
+        self.patchThreshold = 2 #previously 4.
         self.idx = 0
         self.imgcount = 0
         self.associated_colour_retrodetect = None
@@ -413,6 +414,9 @@ class Retrodetect:
     
     def process_image(self,photoitem,groupby='camera'): ##TODO: PASS THIS METHOD THE CLASSIFIER WE WANT TO USE... AS IT WON'T HAVE ACCESS TO A FILENAME/PATH NECESSARILY
         tempdebugtime = datetime.datetime.now()
+        if photoitem is None:
+            print("[photo none]")
+            return
         if 'imgpatches' in photoitem:
             self.classify_patches(photoitem,groupby)
             print('[already processed greyscale image]')
@@ -422,8 +426,11 @@ class Retrodetect:
             return
         debug_time_record() 
 
-        
-        smallmaxedimage = getblockmaxedimage(photoitem['img'],self.scalingfactor,1,resize=False)
+        if self.scalingfactor>1:
+            print("Scaling image for processing: [scaling factor=%d]" % self.scalingfactor)
+            smallmaxedimage = getblockmaxedimage(photoitem['img'],self.scalingfactor,1,resize=False)
+        else:
+            smallmaxedimage = photoitem['img']
         #smallmaxedimage = photoitem['img']
         debug_time_record('reduce image size')            
         raw_img = smallmaxedimage.astype(float)
@@ -495,7 +502,8 @@ class Retrodetect:
                     except Exception as e:
                         print("Skipping patch")
                         print(e)
-                        #continue...?
+                        #still need to delete the tag...
+                        diff[max(0,y-self.delSize):min(diff.shape[0],y+self.delSize),max(0,x-self.delSize):min(diff.shape[1],x+self.delSize)]=-5000
                         continue #skip this patch?
                 else:
                     img_patch = img[y-self.patchSize:y+self.patchSize,x-self.patchSize:x+self.patchSize].astype(np.float32).copy()
@@ -535,16 +543,24 @@ class Retrodetect:
         #print(fn)
         #print("===================")        
         compact_photoitem = photoitem #.copy() #saves time and memory if we actually keep [and trash] the photoitem!
-        if keepimg is None: keepimg = photoitem['index']%100==0 #every 100 we keep the image
+        if keepimg is None: keepimg = photoitem['index']%300==0 #every 300 we keep the image
         
         if lowres_image is not None:
             scaledimg = lowres_image
-            scalingfactor = self.scalingfactor
-            quality = 40
+            scalingfactor = self.scalingfactor            
+            #quality = 40
         else:
-            scaledimg = photoitem['img'][::5,::5] #quick hack to get filesize down of colour images...
-            scalingfactor = 5
-            quality = 40
+            scaledimg = photoitem['img']#[::5,::5] #quick hack to get filesize down of colour images...
+            scalingfactor = 1
+            #quality = 40
+            
+        morescaling = 1
+        if scalingfactor<=3:
+            morescaling = 6//scalingfactor #10/2 = 5
+            scaledimg = scaledimg[::morescaling,::morescaling]            
+            scalingfactor = scalingfactor * morescaling
+        quality = 20
+                    
         scaledimg = scaledimg.astype(float)*10
         scaledimg[scaledimg>255]=255
         
