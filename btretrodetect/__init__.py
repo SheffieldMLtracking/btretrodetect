@@ -2,8 +2,8 @@ import numpy as np
 import os
 from glob import glob
 import pickle
-#from sklearn.ensemble import RandomForestClassifier
-#from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
 from sklearn.neural_network import MLPClassifier
 #from sklearn.svm import LinearSVC
 import simplejpeg
@@ -199,8 +199,9 @@ def getstats(patch):
         return None
         
     stats = [patch['raw_max'],patch['img_max'],patch['diff_max']]
-    stats.extend(getringstats(patch['img_patch']))    
+    #stats.extend(getringstats(patch['diff_patch']))    
     return stats
+
 
 class TrainRetrodetectModel():
     def __init__(self,pathtodata,groupby='all',stopearly=None):
@@ -335,10 +336,28 @@ class TrainRetrodetectModel():
         """
         Build a classifier using the training data in X, y.
         """
-        #clf = RandomForestClassifier(n_estimators = 100, class_weight={False:0.9, True:.1})  
+        print("Building classifier using dataset X is %d x %d" % (X.shape[0],X.shape[1]))
+        print("X:")
+
+        for st in ['rawmax ','imgmax ','diffmax ','1.5min ','1.5mean','1.5max ','  3min ',' 3mean ','  3max ','  5min ',' 5mean ','  5max','   | y ']:
+            print(st,end="")
+        print("")
+        print("-"*(X.shape[1]*7+10)) 
+        ysort = np.argsort(y)
+        for xrow,yrow in zip(X[ysort],y[ysort]):
+            for x in xrow: print("%7.1f" % x,end="")
+            print("   | %d" % yrow)
+        print("---------------------------------------------------")
+        
+        clf = RandomForestClassifier()#n_estimators = 100, class_weight={False:0.9, True:.1})  
         #clf = LogisticRegression()#class_weight={False:0.9, True:.1})
-        clf = MLPClassifier()#class_weight={False:0.9, True:.1})
+        #clf = MLPClassifier()#class_weight={False:0.9, True:.1})
         #clf = LinearSVC(dual='auto')#,class_weight={False:0.99, True:.01})
+        
+        clf.fit(X[::2], y[::2])
+        res = clf.predict(X[1::2])==y[1::2]
+        print("Quick validation test %d of %d correct (%0.0f %%)" % (np.sum(res),len(res),100*np.sum(res)/len(res)))
+        
         return clf.fit(X, y)
        
     def train_all_clfs(self):
@@ -414,7 +433,11 @@ class Retrodetect:
     def process_image(self,photoitem,groupby='camera'): ##TODO: PASS THIS METHOD THE CLASSIFIER WE WANT TO USE... AS IT WON'T HAVE ACCESS TO A FILENAME/PATH NECESSARILY
         tempdebugtime = datetime.datetime.now()
         if 'imgpatches' in photoitem:
-            self.classify_patches(photoitem,groupby)
+            try:
+                self.classify_patches(photoitem,groupby)
+            except:
+                print("Failed to classify (has the classifier been updated?")
+                return
             print('[already processed greyscale image]')
             return
         if photoitem['img'] is None:

@@ -1,0 +1,14 @@
+#!/usr/bin/env python
+
+import numpy as np
+import argparse
+import os
+from btretrodetect import TrainRetrodetectModel
+import sys
+
+parser = argparse.ArgumentParser(description='Trains a new retoreflector classifier.')
+parser.add_argument('imgpath',type=str,help='Path to images (it will recursively search for images in these paths). You need to have clicked on images using btqviewer.')
+parser.add_argument('--groupby',help='Which classifier to use (either one specific to this camera, set or all data). (default: all; choices: camera, set, all)',type=str,default='all')
+args = parser.parse_args()
+
+trm = TrainRetrodetectModel(args.imgpath,groupby=args.groupby)
