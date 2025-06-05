@@ -382,7 +382,7 @@ class Retrodetect:
         self.Ndilated_use = Ndilated_keep - Ndilated_skip
         self.previous_dilated_imgs = None #keep track of previous imgs...
         self.message_queue = message_queue
-        self.patchThreshold = 2 #previously 4.
+        self.patchThreshold = patchThreshold #previously 4.
         self.idx = 0
         self.imgcount = 0
         self.associated_colour_retrodetect = None
@@ -427,9 +427,10 @@ class Retrodetect:
         debug_time_record() 
 
         if self.scalingfactor>1:
-            print("Scaling image for processing: [scaling factor=%d]" % self.scalingfactor)
+            print("Scaling image for processing: [scaling factor=%d] [threshold=%d]" % (self.scalingfactor,self.patchThreshold))
             smallmaxedimage = getblockmaxedimage(photoitem['img'],self.scalingfactor,1,resize=False)
         else:
+            print("Image not scaled for processing: [scaling factor=%d] [threshold=%d]" % (self.scalingfactor,self.patchThreshold))
             smallmaxedimage = photoitem['img']
         #smallmaxedimage = photoitem['img']
         debug_time_record('reduce image size')            
