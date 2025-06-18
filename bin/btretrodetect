@@ -105,7 +105,7 @@ for possiblepath in [x[0] for x in os.walk(imgpath) if '/.' not in x[0]]:
         camid = os.path.normpath(campaths[False]).split(os.path.sep)[-1] #get the camera id from the path, this will be the rightmost folder in the tree
         print("Colour camera id: %s" % camid)
         try:
-            crd = ColourRetrodetect(patchSize=24,camid=camid,base_path=base_path)
+            crd = ColourRetrodetect(patchSize=36,camid=camid,base_path=base_path)
         except Exception as e:
             print("Failed to add colour retrodetection")
             print(e)
