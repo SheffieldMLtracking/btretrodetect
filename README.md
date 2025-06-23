@@ -27,3 +27,10 @@ options:
                         Threshold of score before adding to data
   --sourcename SOURCENAME
                         The name to give this source of labels (default:retrodetect)```
+```
+# workflow
+
+1. Use `btqviewer .` to label bees (this makes a folder, btviewer, in the places where you do this).
+2. Use `btretrodetect-train .` in this location (ideally across a session or set, i.e. from multiple cameras). This by default replaces the current model with a new one (saves the old one with a different name).
+3. Try out `btretrodetect` on a new dataset.
+4. Load the new dataset with btqviewer to see how it does.
