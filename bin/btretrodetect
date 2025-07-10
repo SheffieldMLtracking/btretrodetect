@@ -42,6 +42,9 @@ for possiblepath in [x[0] for x in os.walk(imgpath) if '/.' not in x[0]]:
         print("[No .np files, you might need to go up a level?]")
         continue #not a folder full of np files, keep looking...
     campaths = get_cam_paths(possiblepath)
+    if True not in campaths:
+        print("This is a colour camera: Need greyscale to run algorithm on, skipping.")
+        continue
     if args.basepath is None:
         base_path = os.sep.join(os.path.abspath(possiblepath).split(os.sep)[:-4])
     else:
@@ -64,6 +67,7 @@ for possiblepath in [x[0] for x in os.walk(imgpath) if '/.' not in x[0]]:
     else:
         print("No colour camera added")
     grd.associated_colour_retrodetect = crd
+    
     g_fns = sorted(glob(campaths[True]+'/*.np'))
     c_fns = None
     if False in campaths:
