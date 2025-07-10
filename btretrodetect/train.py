@@ -209,7 +209,7 @@ class TrainRetrodetectModel():
             print("Overwriting classifier for %s (old classifier moved to key='%s'" % (key,oldkey))
             clfs[oldkey] = clfs[key]
         print("Saving classifier as: %s" % key)
-        clfs[key] = self.train_clf(X,y)
+        clfs[key] = {'X':X,'y':y,'classifier':self.train_clf(X,y)}
         
         print("Saving classifiers to %s" % clfsfile)
         print("List of classifiers currently saved:")

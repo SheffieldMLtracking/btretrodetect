@@ -43,7 +43,11 @@ class Retrodetect:
                 print("Classifier not found for %s" % clfname)
                 self.clfs = None
             print("Using classifier %s in %s" % (clfname,clfsfile))
-            self.clfs = self.clfs[clfname]
+            #Temporary if-statement code, to handle change in the file structure...
+            if 'classifier' in self.clfs[clfname]:
+                self.clfs = self.clfs[clfname]['classifier']
+            else:
+                self.clfs = self.clfs[clfname]
         except:
             print("No classifiers found (looked in %s)." % clfsfile)
             self.clfs = None
