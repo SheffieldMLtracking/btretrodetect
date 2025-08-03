@@ -36,6 +36,7 @@ class Retrodetect:
         self.failed_to_classify_quiet = False
         self.skip_saving = skip_saving
         clfsfile = configpath+'clfs.pkl'
+        print("Looking in %s for classifier" % clfsfile)
         try:
             self.clfs = pickle.load(open(clfsfile,'rb'))
             clfname = 'all'
@@ -72,15 +73,17 @@ class Retrodetect:
             return
         if 'imgpatches' in photoitem:
             print('o',end="",flush=True)
-            try:
-                self.classify_patches(photoitem,groupby)
-            except Exception as e:
-                if not self.failed_to_classify_quiet:
-                    print("\n==================================================\nFailed to classify (has the classifier been updated?):")
-                    print(e)
-                    print("Future failure messages muted\n==================================================\n")
-                    self.failed_to_classify_quiet = True
-                return
+            #try:
+            self.classify_patches(photoitem,groupby)
+            for patch in photoitem['imgpatches']:
+                print("%0.2f | " % (100*patch['retrodetect_predictions']),end="",flush=True)
+            #except Exception as e:
+            #    if not self.failed_to_classify_quiet:
+            #        print("\n==================================================\nFailed to classify (has the classifier been updated?):")
+            #        print(e)
+            #        print("Future failure messages muted\n==================================================\n")
+            #        #self.failed_to_classify_quiet = True
+            #    return
             
             return
         if photoitem['img'] is None:
