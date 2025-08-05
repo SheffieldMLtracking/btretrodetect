@@ -623,7 +623,10 @@ class ColourRetrodetect(Retrodetect):
             print("Using %s offset file (%d, %d)" % (offset_configfile, self.offset[0], self.offset[1]))
         except FileNotFoundError:
             print('No offset file found!!! To set correctly, create a file %s containing a dictionary: {"%s": [20, 10]}.' % (offset_configfile,camid))
-            raise Exception("No offset data available: Can't generate colour tag file!!!") 
+            raise Exception("No offset data available: Can't generate colour tag file!!!")
+        except Exception as e:
+            print("Another error occured trying to open the offset file (is it formatted correctly).")
+            print(e)
         
             #self.offset = [0,0]
         assert len(self.offset)==2
