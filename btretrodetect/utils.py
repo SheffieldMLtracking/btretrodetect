@@ -252,7 +252,7 @@ def get_cam_paths(pathtocameras):
     for possiblepath in glob(pathtocameras+'/*'):
         fns = sorted(glob(possiblepath+'/*.np'))
         if len(fns)==0: continue
-        print("OPENING %s..." % fns[0])
+        #print("OPENING %s..." % fns[0])
         photoitem = pickle.load(open(fns[0],'rb'))
         greyscale = None
         if possiblepath.split('/')[-1][:2]=='M-':
