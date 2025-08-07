@@ -567,23 +567,24 @@ class Retrodetect:
         #print(fn)
         #print("===================")        
         compact_photoitem = photoitem #.copy() #saves time and memory if we actually keep [and trash] the photoitem!
-        if keepimg is None: keepimg = photoitem['index']%300==0 #every 300 we keep the image
+        if keepimg is None: keepimg = photoitem['index']%50==0 #every 50 we keep the image
         
         if lowres_image is not None:
             scaledimg = lowres_image
             scalingfactor = self.scalingfactor            
-            #quality = 40
+            #quality = 20 #Mike had at 40 previously
         else:
             scaledimg = photoitem['img']#[::5,::5] #quick hack to get filesize down of colour images...
             scalingfactor = 1
-            #quality = 40
-            
-        morescaling = 1
-        if scalingfactor<=3:
-            morescaling = 6//scalingfactor #10/2 = 5
-            scaledimg = scaledimg[::morescaling,::morescaling]            
-            scalingfactor = scalingfactor * morescaling
-        quality = 20
+            #quality = 20 #Mike had at 40 previously
+
+#Commented out by Joe, 07/08/025, as very lowres images were hard to spot bees in        
+#        morescaling = 1
+#        if scalingfactor<=3:
+#            morescaling = 6//scalingfactor #10/2 = 5
+#            scaledimg = scaledimg[::morescaling,::morescaling]            
+#            scalingfactor = scalingfactor * morescaling
+#        quality = 20
                     
         scaledimg = scaledimg.astype(float)*10
         scaledimg[scaledimg>255]=255
