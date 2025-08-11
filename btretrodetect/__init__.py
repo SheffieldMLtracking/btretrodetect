@@ -572,11 +572,11 @@ class Retrodetect:
         if lowres_image is not None:
             scaledimg = lowres_image
             scalingfactor = self.scalingfactor            
-            quality = 20 #Mike had at 40 previously
+            quality = 50 #Mike had at 40 previously
         else:
             scaledimg = photoitem['img']#[::5,::5] #quick hack to get filesize down of colour images...
             scalingfactor = 1
-            quality = 20 #Mike had at 40 previously
+            quality = 50 #Mike had at 40 previously
 
 #Commented out by Joe, 07/08/025, as very lowres images were hard to spot bees in        
 #        morescaling = 1
