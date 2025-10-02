@@ -1,0 +1,103 @@
+#!/usr/bin/env python
+
+from scipy.stats import logistic
+from pathlib import Path
+import re
+import numpy as np
+from glob import glob
+import argparse
+import os
+import json
+import pickle
+from btretrodetect.utils import get_cam_paths, totalsecs
+
+parser = argparse.ArgumentParser(description='Combines the detection results (from `btretrodetect`) across multiple images (if a bee is seen in a similar location in multiple locations, its score is increased). Saved in `btretrodetect_combined` folders.')
+parser.add_argument('imgpath',type=str,help='Path to images (it will recursively search for images in these paths).')
+parser.add_argument('--after',required=False,type=str,help='Only process images that were created after this time HH:MM:SS')
+parser.add_argument('--before',required=False,type=str,help='Only process images that were created before this time HH:MM:SS')
+parser.add_argument('--threshold',help='Threshold of score before adding to data (default=0.5)',type=str,default=0.5)
+parser.add_argument('--sourcename',help='The name to give this source of labels (default:btretrodetect_combined)',type=str,default='btretrodetect_combined')
+parser.add_argument('--diffusion',help='The `diffusion` distance bees might travel per second that we are considering, default = 20 pixels',type=float,default=20)
+
+
+args = parser.parse_args()
+diffusion = args.diffusion**2
+bgprobability = 1/10e7 #1/10M is about the probability of bee being in a given pixel
+    
+after = 0
+before = 1e10 #big number
+
+if args.after is not None:
+    after = totalsecs(args.after)
+if args.before is not None:
+    before = totalsecs(args.before)
+        
+imgpath = args.imgpath
+for possiblepath in [x[0] for x in os.walk(imgpath) if '/.' not in x[0]]:
+    print("Considering possible path: (searching %s/*/*.np)" % possiblepath)
+    if len(glob(possiblepath+'/*/*.np'))==0: 
+        print("[No .np files, you might need to go up a level?]")
+        continue
+    campaths = get_cam_paths(possiblepath)
+    if True not in campaths:
+        print("This is a colour camera: Need greyscale to run algorithm on, skipping.")
+        continue
+
+
+
+    g_fns = sorted(glob(campaths[True]+'/*.np'))
+    json_greyscale_fns = sorted(glob(campaths[True]+'/btretrodetect'+'/*.json'))[:1000]
+
+
+    all_observations = []
+    print("Loading data (initial pass)...")
+    for i,jsonfn in enumerate(json_greyscale_fns):
+        print("%5d/%5d\r" % (i,len(json_greyscale_fns)),end="")
+        retrodetect_data = json.load(open(jsonfn,'r'))
+        if len(retrodetect_data)>5: #too many!
+            continue
+        for rd in retrodetect_data:
+            conf = rd['confidence']
+            date,hour,minute,second = re.findall("([0-9]{8})_([0-9]{2})\\+([0-9]{2})\\+([0-9]{2})",jsonfn)[0]
+            x,y = rd['x'],rd['y']
+            #print("%s %s:%s:%s: %3d [%3d,%3d]" % (date,hour,minute,second,conf*100,x,y))
+            all_observations.append([int(hour)*3600+int(minute)*60+int(second),conf,x,y])
+    all_observations = np.array(all_observations) 
+
+
+    #then combine their likelihoods...
+    for i,jsonfn in enumerate(json_greyscale_fns):
+        #print("%5d/%5d\r" % (i,len(json_greyscale_fns)),end="")
+        retrodetect_data = json.load(open(jsonfn,'r'))
+        if len(retrodetect_data)>5: #too many!
+            continue
+        for rd in retrodetect_data:
+            conf = rd['confidence']
+            date,hour,minute,second = re.findall("([0-9]{8})_([0-9]{2})\\+([0-9]{2})\\+([0-9]{2})",jsonfn)[0]
+            x,y = rd['x'],rd['y']
+            ob = np.array([int(hour)*3600+int(minute)*60+int(second),conf,x,y])
+        
+            nearby = all_observations[(all_observations[:,0]>ob[0]-10) & (all_observations[:,0]<ob[0]+10),:]
+            nearby = nearby[nearby[:,0]!=ob[0],:]
+            
+            #time, conf, x, y
+            from scipy.stats import multivariate_normal as mvn
+            newscore = logistic(0,1).ppf(ob[1])
+            for n in nearby:
+                scorechange = logistic(0,1).ppf(n[1]*mvn(n[2:],np.abs(diffusion*(n[0]-ob[0]))).pdf(ob[2:]))-logistic(0,1).ppf(bgprobability)
+                if scorechange<0: scorechange = 0
+                #print(n[0]-ob[0],n[2:],ob[2:],scorechange)
+                newscore += scorechange
+            print("%s: %0.2f-->%0.2f" % (jsonfn,ob[1], logistic(0,1).cdf(newscore)))
+            rd['confidence'] = logistic(0,1).cdf(newscore)
+            rd['source'] = 'btretrodetect_combined'
+            rd['version'] = 'btretrodetect_combined, 1.0'
+            
+        newjsonfn = jsonfn.replace('btretrodetect',args.sourcename)
+        
+
+
+        from pathlib import Path
+        Path(newjsonfn).parent.mkdir(exist_ok=True, parents=True)
+        print("Saving %s" % newjsonfn)
+        json.dump(retrodetect_data,open(newjsonfn,'w'))    

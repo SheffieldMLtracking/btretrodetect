@@ -3,12 +3,15 @@
 import numpy as np
 import argparse
 import os
-from btretrodetect import TrainRetrodetectModel
+from btretrodetect.train import TrainRetrodetectModel
 import sys
 
-parser = argparse.ArgumentParser(description='Trains a new retoreflector classifier.')
-parser.add_argument('imgpath',type=str,help='Path to images (it will recursively search for images in these paths). You need to have clicked on images using btqviewer.')
-parser.add_argument('--groupby',help='Which classifier to use (either one specific to this camera, set or all data). (default: all; choices: camera, set, all)',type=str,default='all')
+parser = argparse.ArgumentParser(description='Trains a new retroreflector classifier.')
+#parser.add_argument('imgpath',type=str,help='Path to images (it will recursively search for images in these paths). You need to have clicked on images using btqviewer.')
+parser.add_argument('imgpath',nargs='+',help='Path(s) to images (it will recursively search for images in these paths). You need to have clicked on images using btqviewer.')
+parser.add_argument('--stopearly',help='Only read this many photos from each folder.',type=int,default=None)
+#parser.add_argument('--groupby',help='Which classifier to use (either one specific to this camera, set or all data). (default: all; choices: camera, set, all)',type=str,default='all')
 args = parser.parse_args()
 
-trm = TrainRetrodetectModel(args.imgpath,groupby=args.groupby)
+
+trm = TrainRetrodetectModel(args.imgpath,groupby='all',stopearly=args.stopearly)
