@@ -10,15 +10,18 @@ import os
 import json
 import pickle
 from btretrodetect.utils import get_cam_paths, totalsecs
+from pathlib import Path
 
 parser = argparse.ArgumentParser(description='Combines the detection results (from `btretrodetect`) across multiple images (if a bee is seen in a similar location in multiple locations, its score is increased). Saved in `btretrodetect_combined` folders.')
 parser.add_argument('imgpath',type=str,help='Path to images (it will recursively search for images in these paths).')
 parser.add_argument('--after',required=False,type=str,help='Only process images that were created after this time HH:MM:SS')
 parser.add_argument('--before',required=False,type=str,help='Only process images that were created before this time HH:MM:SS')
 parser.add_argument('--threshold',help='Threshold of score before adding to data (default=0.5)',type=str,default=0.5)
-parser.add_argument('--sourcename',help='The name to give this source of labels (default:btretrodetect_combined)',type=str,default='btretrodetect_combined')
+parser.add_argument('--skipindividuals',help='Whether to skip saving a file for each image, of this combined data.',action="store_true")
+parser.add_argument('--sourcename',help='The name to give this source of labels (default:btretrodetect_combined).',type=str,default='btretrodetect_combined')
+parser.add_argument('--sourcenamecombined',help='The name to give the merged combined labels (default:btretrodetect_combined_merged)',type=str,default='btretrodetect_combined_merged')
 parser.add_argument('--diffusion',help='The `diffusion` distance bees might travel per second that we are considering, default = 20 pixels',type=float,default=20)
-
+parser.add_argument('--combinedindex',help='Whether to save all the data for this camera in a single json. By default this is associated with image index 300. Set this negative, to disable, or an integer to select an index.',default=300)
 
 args = parser.parse_args()
 diffusion = args.diffusion**2
@@ -31,10 +34,11 @@ if args.after is not None:
     after = totalsecs(args.after)
 if args.before is not None:
     before = totalsecs(args.before)
-        
+  
 imgpath = args.imgpath
+print("Starting search...")
 for possiblepath in [x[0] for x in os.walk(imgpath) if '/.' not in x[0]]:
-    print("Considering possible path: (searching %s/*/*.np)" % possiblepath)
+    print("Considering possible path: (searching %s/*/*.np)" % possiblepath,flush=True)
     if len(glob(possiblepath+'/*/*.np'))==0: 
         print("[No .np files, you might need to go up a level?]")
         continue
@@ -43,15 +47,31 @@ for possiblepath in [x[0] for x in os.walk(imgpath) if '/.' not in x[0]]:
         print("This is a colour camera: Need greyscale to run algorithm on, skipping.")
         continue
 
-
+    #Compute the filename we are going to write the merged, combined data to....
+    merged_json_filename = None
+    if args.combinedindex>=0:
+        try:
+            searchstring = campaths[True]+'/btretrodetect/*_%04d.json' % args.combinedindex
+            fns = glob(searchstring)
+            if len(fns)==0:
+                print("Unable to find file '%s'." % searchstring)
+                merged_json_filename = None
+            else:
+                merged_json_filename = fns[0].replace('btretrodetect',args.sourcenamecombined)
+                print("Will save merged dataset to: %s" % merged_json_filename)
+        except:
+            print("Failed to determine a valid merged filename.")
+            merged_json_filename = None
 
     g_fns = sorted(glob(campaths[True]+'/*.np'))
-    json_greyscale_fns = sorted(glob(campaths[True]+'/btretrodetect'+'/*.json'))[:1000]
+    json_greyscale_fns = sorted(glob(campaths[True]+'/btretrodetect'+'/*.json'))
 
-
+    #Loop over all the observations and build an array of these...
     all_observations = []
     print("Loading data (initial pass)...")
     for i,jsonfn in enumerate(json_greyscale_fns):
+        if (totalsecs(jsonfn)<after): continue
+        if (totalsecs(jsonfn)>before): break
         print("%5d/%5d\r" % (i,len(json_greyscale_fns)),end="")
         retrodetect_data = json.load(open(jsonfn,'r'))
         if len(retrodetect_data)>5: #too many!
@@ -64,10 +84,13 @@ for possiblepath in [x[0] for x in os.walk(imgpath) if '/.' not in x[0]]:
             all_observations.append([int(hour)*3600+int(minute)*60+int(second),conf,x,y])
     all_observations = np.array(all_observations) 
 
-
-    #then combine their likelihoods...
+    #Loop over all the observations again, using the above dataset to take into account nearby points...
+    print("\nCombining...")
+    combined_single_dataset_for_camera = []
     for i,jsonfn in enumerate(json_greyscale_fns):
-        #print("%5d/%5d\r" % (i,len(json_greyscale_fns)),end="")
+        if (totalsecs(jsonfn)<after): continue
+        if (totalsecs(jsonfn)>before): break    
+        print("%5d/%5d\r" % (i,len(json_greyscale_fns)),end="")
         retrodetect_data = json.load(open(jsonfn,'r'))
         if len(retrodetect_data)>5: #too many!
             continue
@@ -92,12 +115,24 @@ for possiblepath in [x[0] for x in os.walk(imgpath) if '/.' not in x[0]]:
             rd['confidence'] = logistic(0,1).cdf(newscore)
             rd['source'] = 'btretrodetect_combined'
             rd['version'] = 'btretrodetect_combined, 1.0'
-            
-        newjsonfn = jsonfn.replace('btretrodetect',args.sourcename)
+            rd['hour'] = hour
+            rd['minute'] = minute
+            rd['second'] = second
+            rd['date'] = date
+            rd['timestring'] = "%s:%s:%s" % (hour,minute,second)
         
+        
+        combined_single_dataset_for_camera.extend(retrodetect_data)
+   
+        if not args.skipindividuals:
+            newjsonfn = jsonfn.replace('btretrodetect',args.sourcename)
+            Path(newjsonfn).parent.mkdir(exist_ok=True, parents=True)
+            print("Saving %s" % newjsonfn)
+            json.dump(retrodetect_data,open(newjsonfn,'w'))
 
-
-        from pathlib import Path
-        Path(newjsonfn).parent.mkdir(exist_ok=True, parents=True)
-        print("Saving %s" % newjsonfn)
-        json.dump(retrodetect_data,open(newjsonfn,'w'))    
+    if merged_json_filename is not None:
+        print("Saving combined merged dataset to %s" % merged_json_filename)
+        Path(merged_json_filename).parent.mkdir(exist_ok=True, parents=True)   
+        for rd in combined_single_dataset_for_camera:
+            rd['source'] = 'btretrodetect_combined_merged' 
+        json.dump(combined_single_dataset_for_camera,open(merged_json_filename,'w'))
