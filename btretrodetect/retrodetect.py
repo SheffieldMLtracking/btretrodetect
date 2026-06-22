@@ -205,12 +205,13 @@ class Retrodetect:
         """
         
         if self.skip_saving: return
+        print("Saving (compacted) image")
         if fn is None:
             parents = "%s/%s/%s/%s/%s/%s/" % (self.base_path,datetime.date.today(),photoitem['session_name']+'_compact',photoitem['set_name']+'_compact',photoitem['dev_id'],photoitem['camid'])
             fn = parents + 'compact_' + photoitem['filename']
         #print(fn)
         #print("===================")        
-        compact_photoitem = photoitem #.copy() #saves time and memory if we actually keep [and trash] the photoitem!
+        compact_photoitem = photoitem.copy() #saves time and memory if we actually keep [and trash] the photoitem! 
         if keepimg is None: keepimg = photoitem['index']%300==0 #every 300 we keep the image
         
         if lowres_image is not None:
