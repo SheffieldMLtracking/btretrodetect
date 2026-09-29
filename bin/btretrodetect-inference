@@ -1,0 +1,98 @@
+#!/usr/bin/env python
+
+from scipy.stats import logistic
+from pathlib import Path
+import re
+import numpy as np
+from glob import glob
+import argparse
+import os
+import json
+import pickle
+from btretrodetect.utils import get_cam_paths, totalsecs
+
+parser = argparse.ArgumentParser(description='Combines the detection results (from `btretrodetect`) with output of btinference. Saved in `btretrodetect_inference` folders.')
+parser.add_argument('imgpath',type=str,help='Path to images (it will recursively search for images in these paths).')
+parser.add_argument('--after',required=False,type=str,help='Only process images that were created after this time HH:MM:SS')
+parser.add_argument('--before',required=False,type=str,help='Only process images that were created before this time HH:MM:SS')
+parser.add_argument('--threshold',help='Threshold of score before adding to data (default=0.5)',type=float,default=0.5)
+parser.add_argument('--sourcename',help='The name to give this source of labels (default:btretrodetect_inference)',type=str,default='btretrodetect_inference')
+
+
+
+args = parser.parse_args()
+
+    
+after = 0
+before = 1e10 #big number
+
+if args.after is not None:
+    after = totalsecs(args.after)
+if args.before is not None:
+    before = totalsecs(args.before)
+        
+imgpath = args.imgpath
+for possiblepath in [x[0] for x in os.walk(imgpath) if '/.' not in x[0]]:
+    #print(" ")
+    #print("Considering possible path: (searching %s/*/*.np)" % possiblepath)
+    if len(glob(possiblepath+'/*/*.np'))==0: 
+        #print("   [No .np files, you might need to go up a level?]")
+        continue
+    campaths = get_cam_paths(possiblepath)
+    if True not in campaths:
+        print("   This is a colour camera: Need greyscale to run algorithm on, skipping.")
+        continue
+
+    rd_filenames = sorted(glob(campaths[True]+'/btretrodetect'+'/*.json'))
+
+    #fns = [(fn,fn.replace('/btretrodetect/','/btinference/'),fn.replace('/btretrodetect/','/'+args.sourcename+'/')) for fn in rd_filenames if os.path.isfile(fn.replace('/btretrodetect/','/btinference/'))]
+
+
+    
+    if len(rd_filenames)==0:
+        print("   No retrodetection files to process")
+        break    
+    count = 0
+    updatedcount = 0
+    os.makedirs(campaths[True]+'/'+args.sourcename,exist_ok=True)
+    for fn in rd_filenames:
+        jsonfilename = fn.split('/')[-1] #remove the path
+        if not before>totalsecs(jsonfilename)>after:
+            continue
+        count+=1
+        viewer_fn = fn.replace('/btretrodetect/','/btviewer/') #where 'clicks' are (don't want to save those)...
+        if os.path.exists(viewer_fn): continue
+
+        dest_fn = fn.replace('/btretrodetect/','/'+args.sourcename+'/') #where we're saving the output to...
+        inf_fn = fn.replace('/btretrodetect/','/btinference/') #btinference fn
+        if not os.path.exists(inf_fn):
+            #print("Skipping %s as not found inference file." % inf_fn)
+            continue
+        
+        rd_data = json.load(open(fn))
+        #if len(rd_data)>0:
+        #    print("   Trying %s (contains %d detections)" % (jsonfilename,len(rd_data)),end="")
+        for rd_item in rd_data:
+            rd_coord = np.array([rd_item['x'],rd_item['y']])
+            distances = []
+            for item in json.load(open(inf_fn)): #loop over inference...
+                sample_coord = np.array([item['x'],item['y']])
+                distances.append(np.linalg.norm(rd_coord-sample_coord))
+            #Need to come up with a made up heuristic here...
+            prob = 5*(np.mean(np.exp(-np.array(distances)**2/(2*40**2)))*rd_item['confidence'])
+            if prob>1: prob = 1
+            if prob>args.threshold:
+                updatedcount+=1
+                json_item = [{"x":rd_item['x'],"y":rd_item['y'], "source": args.sourcename, "version": "btretrodetect, v2.0", "meta":"", "label":"rd", "confidence":float(prob)}]
+                print("      Saving to %s: %0.2f" % (dest_fn,prob))
+                #print("x",end="")
+            #print(json_item)
+                json.dump(json_item,open(dest_fn,'w'))
+            #else:
+            #    print("o",end="")
+            #    print("      Skipping %s (below threshold: %0.2f<%0.2f)" % (dest_fn,prob,args.threshold))
+        #print("")
+    if count==0:
+        print("   All retrodetection files were outside time range requested.")
+
+    print("Updated %d of %d files" % (updatedcount,count))        

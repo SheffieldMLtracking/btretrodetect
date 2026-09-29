@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "btretrodetect"
+version = "2.0"
+description = "Finds retroreflectors in a series of flash illuminated photos"
+readme = "README.md"
+authors = [
+    {name = "Mike Smith", email = "m.t.smith@sheffield.ac.uk"}
+]
+keywords = ["image processing", "retroreflectors"]
+classifiers = []
+dependencies = [
+    "numpy","scikit-learn"
+]
+
+[project.urls]
+Homepage = "https://github.com/SheffieldMLtracking/btretrodetect.git"
+Download = "https://github.com/SheffieldMLtracking/btretrodetect.git"
+
+[tool.setuptools]
+packages = ["btretrodetect"]
+script-files = [
+    "bin/btretrodetect",
+    "bin/btretrodetect-train",
+    "bin/btretrodetect-combine",
+    "bin/btretrodetect-inference",
+]
